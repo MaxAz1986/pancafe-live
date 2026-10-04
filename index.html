@@ -144,7 +144,7 @@ tr:last-child td { border-bottom: 0; }
   <p>Sign in to see your cafe's sales and PCs in real time.</p>
   <form id="loginForm">
     <label for="email">Email<input id="email" type="email" autocomplete="username" required></label>
-    <label for="password">Password<input id="password" type="password" autocomplete="current-password" minlength="8" required></label>
+    <label for="password">Password (at least 8 characters)<input id="password" type="password" autocomplete="current-password" minlength="8" required></label>
     <button class="btn" type="submit" id="signinBtn">Sign in</button>
     <button class="btn ghost" type="button" id="signupBtn">Create account</button>
     <div id="loginMsg" class="msg"></div>
@@ -519,7 +519,11 @@ tr:last-child td { border-bottom: 0; }
     if (error) msg(error.message, true);
   });
   $("signupBtn").addEventListener("click", async () => {
-    if (!$("loginForm").reportValidity()) return;
+    if (!$("email").value.trim() || $("password").value.length < 8) {
+      msg("To create an account, type your email and choose a password of at least 8 characters, then tap Create account again.", true);
+      ($("email").value.trim() ? $("password") : $("email")).focus();
+      return;
+    }
     msg("Creating account…");
     const { data, error } = await sb.auth.signUp({ email: $("email").value.trim(), password: $("password").value, options: { emailRedirectTo: location.href.split("#")[0] } });
     if (error) msg(error.message, true);
