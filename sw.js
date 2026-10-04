@@ -1,6 +1,6 @@
 // Offline shell for the installed app. Pages and files from this site are fetched
 // fresh when online and served from cache when not. Live data (Supabase) is never cached.
-const CACHE = "pcl-v1";
+const CACHE = "pcl-v2";
 const SHELL = ["./", "index.html", "config.js", "vendor/chart.umd.js", "manifest.webmanifest", "icons/icon-192.png"];
 const CDN = ["cdn.jsdelivr.net", "fonts.googleapis.com", "fonts.gstatic.com"];
 
@@ -16,7 +16,8 @@ self.addEventListener("fetch", (e) => {
   if (req.method !== "GET") return;
   const url = new URL(req.url);
   if (url.origin === location.origin) {
-    e.respondWith(fetch(req).then((res) => {
+    // no-cache: always ask GitHub whether the page changed, so updates show on the next open
+    e.respondWith(fetch(req, { cache: "no-cache" }).then((res) => {
       if (res.ok) { const copy = res.clone(); caches.open(CACHE).then((c) => c.put(req, copy)); }
       return res;
     }).catch(() => caches.match(req, { ignoreSearch: true }).then((r) => r || caches.match("index.html"))));
