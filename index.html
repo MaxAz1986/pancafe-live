@@ -1,0 +1,537 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Pancafe Live</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Figtree:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="config.js"></script>
+<style>
+/* Layout: a cashier's console. Sticky status bar, money strip, PC floor, then the ledger and charts in two columns. */
+:root {
+  --bg: #f5f6f4; --surface: #ffffff; --surface-2: #eef0ec; --line: #dfe2dc;
+  --ink: #111512; --ink-2: #4d544e; --ink-3: #7b827c;
+  --accent: #0f6b4f; --accent-ink: #ffffff;
+  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; --s-other: #9aa19b;
+  --good: #0a7d32; --good-bg: #dff3e5; --warn: #9a6200; --warn-bg: #fdf0d4; --bad: #b42318; --bad-bg: #fde4e1;
+  --idle-bg: #eef0ec;
+  --f-display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --f-body: "Figtree", "Segoe UI", system-ui, sans-serif;
+  --f-mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
+  --r: 10px;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #121513; --surface: #1a1e1b; --surface-2: #232824; --line: #2f3530;
+  --ink: #f1f4f1; --ink-2: #b9c1ba; --ink-3: #8a938c;
+  --accent: #3fbf8f; --accent-ink: #0b1510;
+  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s-other: #6c746d;
+  --good: #5fd38a; --good-bg: #173322; --warn: #f0b54a; --warn-bg: #3a2c10; --bad: #ff8a7a; --bad-bg: #3d1915;
+  --idle-bg: #202521; color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #121513; --surface: #1a1e1b; --surface-2: #232824; --line: #2f3530;
+  --ink: #f1f4f1; --ink-2: #b9c1ba; --ink-3: #8a938c;
+  --accent: #3fbf8f; --accent-ink: #0b1510;
+  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s-other: #6c746d;
+  --good: #5fd38a; --good-bg: #173322; --warn: #f0b54a; --warn-bg: #3a2c10; --bad: #ff8a7a; --bad-bg: #3d1915;
+  --idle-bg: #202521; color-scheme: dark; }
+
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--ink); font: 15px/1.45 var(--f-body); -webkit-font-smoothing: antialiased; }
+.wrap { max-width: 1280px; margin: 0 auto; padding-inline: 16px; padding-block: 0 48px; }
+h1, h2 { font-family: var(--f-display); font-weight: 700; margin: 0; text-wrap: balance; }
+h2 { font-size: 17px; letter-spacing: -0.01em; }
+.num { font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
+.muted { color: var(--ink-3); }
+button, select, input { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* top bar */
+.bar { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--bg); border-bottom: 1px solid var(--line); }
+.bar .wrap { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; padding-block: 12px; }
+.brand { display: flex; align-items: baseline; gap: 8px; margin-right: auto; }
+.brand h1 { font-size: 22px; letter-spacing: -0.02em; }
+.brand .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); align-self: center; }
+.pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; font-size: 13px; font-weight: 600; background: var(--surface-2); color: var(--ink-2); white-space: nowrap; }
+.pill::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.pill.good { background: var(--good-bg); color: var(--good); }
+.pill.warn { background: var(--warn-bg); color: var(--warn); }
+.pill.bad { background: var(--bad-bg); color: var(--bad); }
+.seg { display: inline-flex; background: var(--surface-2); border-radius: 8px; padding: 3px; gap: 2px; flex-wrap: wrap; }
+.seg button { border: 0; background: transparent; padding: 5px 10px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; color: var(--ink-2); }
+.seg button[aria-pressed="true"] { background: var(--surface); color: var(--ink); box-shadow: 0 1px 2px rgb(0 0 0 / .12); }
+.linkbtn { border: 0; background: none; color: var(--ink-3); cursor: pointer; font-size: 13px; text-decoration: underline; }
+
+/* money strip */
+.money { display: grid; grid-template-columns: 1.4fr repeat(5, 1fr); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; margin-top: 20px; }
+.money > div { background: var(--surface); padding: 14px 16px; min-width: 0; }
+.money .lbl { font-size: 12px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-3); display: flex; align-items: center; gap: 6px; }
+.money .lbl i { width: 8px; height: 8px; border-radius: 2px; display: inline-block; }
+.money .val { font-family: var(--f-mono); font-size: 22px; font-weight: 600; margin-top: 4px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.money .net .val { font-family: var(--f-display); font-size: 34px; letter-spacing: -0.02em; }
+.money .sub { font-size: 12px; color: var(--ink-3); margin-top: 2px; }
+@media (max-width: 900px) { .money { grid-template-columns: repeat(3, 1fr); } .money .net { grid-column: 1 / -1; } }
+@media (max-width: 480px) { .money { grid-template-columns: repeat(2, 1fr); } }
+
+/* sections */
+.sec { margin-top: 28px; }
+.sec-h { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; margin-bottom: 12px; }
+.sec-h .muted { font-size: 13px; }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 16px; min-width: 0; }
+.cols { display: grid; grid-template-columns: 1.5fr 1fr; gap: 16px; }
+@media (max-width: 900px) { .cols { grid-template-columns: 1fr; } }
+
+/* PC floor */
+.floor { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 8px; }
+.pc { border-radius: 8px; padding: 10px; background: var(--idle-bg); border: 1px solid transparent; min-height: 92px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.pc .nm { font-family: var(--f-display); font-weight: 700; font-size: 16px; display: flex; justify-content: space-between; gap: 6px; }
+.pc .st { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-3); }
+.pc .tm { font-family: var(--f-mono); font-size: 15px; font-variant-numeric: tabular-nums; margin-top: auto; }
+.pc .ex { font-size: 12px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pc.on { background: var(--surface); border-color: var(--accent); box-shadow: inset 4px 0 0 var(--accent); }
+.pc.on .st { color: var(--accent); }
+@media (max-width: 480px) { .floor { grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 6px; } .pc { min-height: 0; padding: 8px; } .pc .ex { display: none; } .bar { position: static; } }
+.pc.low { border-color: var(--warn); box-shadow: inset 4px 0 0 var(--warn); }
+.pc.low .st { color: var(--warn); }
+.pc.paused .st { color: var(--warn); }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 13px; color: var(--ink-2); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+
+/* charts */
+.chart { position: relative; }
+.chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+.chart text { fill: var(--ink-3); font: 11px var(--f-mono); }
+.chart .grid { stroke: var(--line); stroke-width: 1; }
+.tip { position: absolute; pointer-events: none; background: var(--ink); color: var(--bg); font-size: 12px; padding: 6px 8px; border-radius: 6px; white-space: nowrap; transform: translate(-50%, -110%); z-index: 3; }
+.tip b { font-family: var(--f-mono); font-weight: 600; }
+
+/* tables */
+.tbl-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th { text-align: left; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-3); font-weight: 600; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+td { padding: 7px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+td.r, th.r { text-align: right; }
+tr:last-child td { border-bottom: 0; }
+.tag { display: inline-block; font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 4px; background: var(--surface-2); color: var(--ink-2); white-space: nowrap; }
+.tag.exp { background: var(--bad-bg); color: var(--bad); }
+.feed td { font-size: 13px; }
+.feedbox { max-height: 420px; overflow-y: auto; }
+.new { animation: flash 2s ease-out; }
+@keyframes flash { from { background: var(--good-bg); } to { background: transparent; } }
+@media (prefers-reduced-motion: reduce) { .new { animation: none; } }
+
+/* login */
+.login { max-width: 380px; margin: 12vh auto 0; padding-inline: 16px; }
+.login h1 { font-size: 30px; letter-spacing: -0.02em; }
+.login p { color: var(--ink-2); }
+.login form { display: grid; gap: 10px; margin-top: 18px; }
+.login label { font-size: 13px; font-weight: 600; color: var(--ink-2); display: grid; gap: 4px; }
+.login input { padding: 10px 12px; border: 1px solid var(--line); background: var(--surface); border-radius: 8px; }
+.btn { padding: 10px 14px; border: 0; border-radius: 8px; background: var(--accent); color: var(--accent-ink); font-weight: 600; cursor: pointer; }
+.btn.ghost { background: var(--surface-2); color: var(--ink); }
+.msg { font-size: 14px; min-height: 1.4em; }
+.msg.err { color: var(--bad); }
+.empty { color: var(--ink-3); font-size: 14px; padding: 12px 0; }
+</style>
+</head>
+<body>
+
+<section id="login" class="login" hidden>
+  <h1>Pancafe Live</h1>
+  <p>Sign in to see your cafe's sales and PCs in real time.</p>
+  <form id="loginForm">
+    <label for="email">Email<input id="email" type="email" autocomplete="username" required></label>
+    <label for="password">Password<input id="password" type="password" autocomplete="current-password" minlength="8" required></label>
+    <button class="btn" type="submit" id="signinBtn">Sign in</button>
+    <button class="btn ghost" type="button" id="signupBtn">Create account</button>
+    <div id="loginMsg" class="msg"></div>
+  </form>
+</section>
+
+<div id="app" hidden>
+  <header class="bar">
+    <div class="wrap">
+      <div class="brand"><span class="dot"></span><h1>Pancafe Live</h1></div>
+      <span id="syncPill" class="pill">Connecting</span>
+      <div class="seg" role="group" aria-label="Period" id="rangeSeg">
+        <button type="button" data-r="today" aria-pressed="true">Today</button>
+        <button type="button" data-r="yesterday" aria-pressed="false">Yesterday</button>
+        <button type="button" data-r="7d" aria-pressed="false">7 days</button>
+        <button type="button" data-r="month" aria-pressed="false">This month</button>
+        <button type="button" data-r="lastmonth" aria-pressed="false">Last month</button>
+      </div>
+      <button class="linkbtn" id="signoutBtn" type="button">Sign out</button>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <div class="money" id="money"></div>
+
+    <section class="sec">
+      <div class="sec-h"><h2>PC floor</h2><span class="muted" id="floorSummary"></span></div>
+      <div class="panel">
+        <div class="floor" id="floor"></div>
+        <div class="legend" style="margin-top:12px">
+          <span><i style="background:var(--accent)"></i>In use</span>
+          <span><i style="background:var(--warn)"></i>Under 10 min left</span>
+          <span><i style="background:var(--idle-bg);border:1px solid var(--line)"></i>Free</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="sec cols">
+      <div class="panel">
+        <div class="sec-h"><h2 id="hourTitle">Income by hour</h2><span class="muted" id="hourSub"></span></div>
+        <div class="legend" id="catLegend" style="margin-bottom:8px"></div>
+        <div class="chart" id="hourChart"></div>
+      </div>
+      <div class="panel">
+        <div class="sec-h"><h2>Live transactions</h2><span class="muted">newest first</span></div>
+        <div class="tbl-wrap feedbox"><table class="feed"><tbody id="feed"></tbody></table></div>
+      </div>
+    </section>
+
+    <section class="sec panel">
+      <div class="sec-h"><h2>Last 30 days</h2><span class="muted">daily income, expenses shown separately</span></div>
+      <div class="chart" id="dayChart"></div>
+    </section>
+
+    <section class="sec cols">
+      <div class="panel">
+        <div class="sec-h"><h2>By staff</h2><span class="muted" id="staffSub"></span></div>
+        <div class="tbl-wrap"><table><thead><tr><th>Staff</th><th class="r">PC time</th><th class="r">Food</th><th class="r">Top-ups</th><th class="r">Expenses</th><th class="r">Net</th></tr></thead><tbody id="staff"></tbody></table></div>
+      </div>
+      <div class="panel">
+        <div class="sec-h"><h2>Top products</h2><span class="muted" id="prodSub"></span></div>
+        <div class="tbl-wrap"><table><thead><tr><th>Product</th><th class="r">Sold</th><th class="r">Amount</th></tr></thead><tbody id="products"></tbody></table></div>
+      </div>
+    </section>
+
+    <section class="sec cols">
+      <div class="panel">
+        <div class="sec-h"><h2>Busiest PCs</h2><span class="muted" id="pcSub"></span></div>
+        <div class="tbl-wrap"><table><thead><tr><th>PC</th><th class="r">Sessions</th><th class="r">Hours</th><th class="r">Income</th></tr></thead><tbody id="pcs"></tbody></table></div>
+      </div>
+      <div class="panel">
+        <div class="sec-h"><h2>Members</h2><span class="muted" id="memSub"></span></div>
+        <div class="tbl-wrap"><table><thead><tr><th>Member</th><th class="r">Balance</th><th class="r">Last visit</th></tr></thead><tbody id="members"></tbody></table></div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script>
+(() => {
+  const CFG = window.PANCAFE_CONFIG || {};
+  const TZ = CFG.utcOffset || "+08:00";               // the cafe's local time (Philippines)
+  const CUR = CFG.currency || "₱";
+  const KIND = { 1: "PC time", 2: "Food & drinks", 3: "Manual entry", 4: "Member top-up", 6: "Refund", 8: "Ticket sale" };
+  const CATS = [ // income categories, fixed color order
+    { key: "pc", label: "PC time", color: "var(--s1)", kinds: [1] },
+    { key: "food", label: "Food & drinks", color: "var(--s2)", kinds: [2] },
+    { key: "topup", label: "Top-ups", color: "var(--s3)", kinds: [4] },
+    { key: "ticket", label: "Tickets", color: "var(--s4)", kinds: [8] },
+    { key: "other", label: "Other", color: "var(--s-other)", kinds: null },
+  ];
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const offMin = (() => { const m = TZ.match(/([+-])(\d\d):(\d\d)/); return (m[1] === "-" ? -1 : 1) * (+m[2] * 60 + +m[3]); })();
+  const local = (d) => new Date(new Date(d).getTime() + offMin * 60000); // read with getUTC*
+  const money = (v, dp = 0) => CUR + Number(v || 0).toLocaleString("en-PH", { minimumFractionDigits: dp, maximumFractionDigits: dp });
+  const hhmm = (d) => { const l = local(d); return String(l.getUTCHours()).padStart(2, "0") + ":" + String(l.getUTCMinutes()).padStart(2, "0"); };
+  const dayKey = (d) => local(d).toISOString().slice(0, 10);
+  const catOf = (row) => row.is_expense ? "expense" : (CATS.find((c) => c.kinds && c.kinds.includes(row.kind)) || CATS[4]).key;
+
+  // ---------- data source: Supabase, or a local sample file for previews ----------
+  const demo = location.hash === "#demo";
+  let sb = null;
+  if (!demo) {
+    if (!CFG.supabaseUrl || !window.supabase) { document.body.innerHTML = '<p style="padding:24px">Missing config.js (supabaseUrl / supabaseKey).</p>'; return; }
+    sb = window.supabase.createClient(CFG.supabaseUrl, CFG.supabaseKey);
+  }
+  let DEMO = null;
+  async function q(table, build) {
+    if (demo) {
+      DEMO = DEMO || await (await fetch("demo-data.json")).json();
+      return build ? build(DEMO[table] || []) : (DEMO[table] || []);
+    }
+    const out = []; const page = 1000;
+    for (let from = 0; ; from += page) {
+      const { data, error } = await build(sb.from(table)).range(from, from + page - 1);
+      if (error) throw error;
+      out.push(...data);
+      if (data.length < page) return out;
+    }
+  }
+  const nowMs = () => demo && DEMO?.now ? new Date(DEMO.now).getTime() + (Date.now() - bootAt) : Date.now();
+  const bootAt = Date.now();
+
+  // ---------- period ----------
+  let range = "today";
+  function period() {
+    const l = new Date(nowMs() + offMin * 60000);
+    const y = l.getUTCFullYear(), m = l.getUTCMonth(), d = l.getUTCDate();
+    const at = (Y, M, D) => new Date(Date.UTC(Y, M, D) - offMin * 60000);
+    switch (range) {
+      case "yesterday": return { start: at(y, m, d - 1), end: at(y, m, d), label: "yesterday", hourly: true };
+      case "7d": return { start: at(y, m, d - 6), end: at(y, m, d + 1), label: "last 7 days", hourly: true };
+      case "month": return { start: at(y, m, 1), end: at(y, m, d + 1), label: "this month", hourly: true };
+      case "lastmonth": return { start: at(y, m - 1, 1), end: at(y, m, 1), label: "last month", hourly: true };
+      default: return { start: at(y, m, d), end: at(y, m, d + 1), label: "today", hourly: true };
+    }
+  }
+  const inPeriod = (t, p) => { const x = new Date(t).getTime(); return x >= p.start.getTime() && x < p.end.getTime(); };
+
+  // ---------- state ----------
+  let cash = [], sessions = [], moves = [], terminals = [], members = [], daily = [], agent = null;
+
+  async function loadPeriod() {
+    const p = period();
+    const s = p.start.toISOString(), e = p.end.toISOString();
+    const f = (col) => demo ? (rows) => rows.filter((r) => inPeriod(r[col], p)) : (t) => t.select("*").gte(col, s).lt(col, e).order("id");
+    [cash, sessions, moves] = await Promise.all([q("pancafe_cash", f("at")), q("pancafe_sessions", f("end_at")), q("pancafe_stock_moves", f("at"))]);
+  }
+  async function loadStatic() {
+    const since = new Date(nowMs() - 31 * 86400000).toISOString().slice(0, 10);
+    const all = demo ? null : (t) => t.select("*");
+    [terminals, members, daily] = await Promise.all([
+      q("pancafe_terminals", all), q("pancafe_members", all),
+      q("pancafe_daily", demo ? (r) => r.filter((x) => x.day >= since) : (t) => t.select("*").gte("day", since).order("day")),
+    ]);
+    const a = await q("pancafe_agent_status", all); agent = a[0] || null;
+  }
+
+  // ---------- render: money strip ----------
+  function sums(rows) {
+    const o = { pc: 0, food: 0, topup: 0, ticket: 0, other: 0, expense: 0 };
+    for (const r of rows) o[catOf(r)] += Number(r.amount);
+    o.income = o.pc + o.food + o.topup + o.ticket + o.other;
+    o.net = o.income - o.expense;
+    return o;
+  }
+  function renderMoney() {
+    const p = period(); const o = sums(cash);
+    const n = sessions.length;
+    $("money").innerHTML = `
+      <div class="net"><div class="lbl">Net ${esc(p.label)}</div><div class="val">${money(o.net, 2)}</div><div class="sub">${money(o.income)} in · ${money(o.expense)} out · ${n} sessions</div></div>
+      ${CATS.slice(0, 4).map((c) => `<div><div class="lbl"><i style="background:${c.color}"></i>${c.label}</div><div class="val">${money(o[c.key])}</div></div>`).join("")}
+      <div><div class="lbl"><i style="background:var(--bad)"></i>Expenses</div><div class="val">${money(o.expense)}</div><div class="sub">${o.other ? "Other income " + money(o.other) : ""}</div></div>`;
+  }
+
+  // ---------- render: PC floor ----------
+  const STATUS = { 1: null, 3: "Open time", 4: "Prepaid" };
+  function renderFloor() {
+    const now = nowMs();
+    const list = [...terminals].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+    let used = 0;
+    $("floor").innerHTML = list.map((t) => {
+      const inUse = t.status !== 1 && t.status !== 0;
+      if (!inUse) return `<div class="pc"><div class="nm">${esc(t.name)}</div><div class="st">Free</div></div>`;
+      used++;
+      const mins = Math.max(0, Math.floor((now - new Date(t.start_at).getTime()) / 60000));
+      const left = t.timer_minute > 0 ? t.timer_minute - mins : null;
+      const low = left !== null && left <= 10;
+      const label = t.paused ? "Paused" : (STATUS[t.status] || "In use");
+      const time = left !== null ? `${Math.max(left, 0)}m left` : `${Math.floor(mins / 60)}h ${String(mins % 60).padStart(2, "0")}m`;
+      const extra = [t.prepaid_amount > 0 ? money(t.prepaid_amount) + " paid" : "", t.order_amount > 0 ? money(t.order_amount) + " food" : "", t.open_admin || ""].filter(Boolean).join(" · ");
+      return `<div class="pc on ${low ? "low" : ""} ${t.paused ? "paused" : ""}" title="Started ${hhmm(t.start_at)}"><div class="nm">${esc(t.name)}</div><div class="st">${label}</div><div class="tm">${time}</div><div class="ex">${esc(extra)}</div></div>`;
+    }).join("") || '<div class="empty">No PCs synced yet.</div>';
+    $("floorSummary").textContent = `${used} of ${list.length} in use`;
+  }
+
+  // ---------- render: charts ----------
+  function tipFor(host) {
+    let tip = host.querySelector(".tip");
+    if (!tip) { tip = document.createElement("div"); tip.className = "tip"; tip.hidden = true; host.appendChild(tip); }
+    return tip;
+  }
+  function niceMax(v) { if (v <= 0) return 100; const p = Math.pow(10, Math.floor(Math.log10(v))); for (const m of [1, 2, 2.5, 5, 10]) if (m * p >= v) return m * p; return 10 * p; }
+  function stackedBars(host, buckets, opts) {
+    // buckets: [{label, tick, parts:{key:value}, expense}]
+    const W = Math.max(280, Math.round(host.clientWidth || 720)), H = opts.h || 220, L = 44, R = 8, T = 10, B = 26;
+    const keys = CATS.map((c) => c.key);
+    const tot = (b) => keys.reduce((s, k) => s + (b.parts[k] || 0), 0);
+    const max = niceMax(Math.max(...buckets.map(tot), 1));
+    const n = buckets.length, slot = (W - L - R) / n, bw = Math.max(2, Math.min(28, slot * 0.7));
+    const every = Math.ceil(n / Math.max(4, Math.floor((W - L) / 56))); // keep tick labels from colliding
+    const y = (v) => T + (H - T - B) * (1 - v / max);
+    let g = "";
+    for (let i = 0; i <= 4; i++) { const v = max * i / 4; g += `<line class="grid" x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}"/><text x="${L - 6}" y="${y(v) + 4}" text-anchor="end">${v >= 1000 ? (v / 1000) + "k" : v}</text>`; }
+    buckets.forEach((b, i) => {
+      const x = L + i * slot + (slot - bw) / 2;
+      let acc = 0;
+      const segs = keys.filter((k) => b.parts[k] > 0);
+      segs.forEach((k, j) => {
+        const v = b.parts[k], y0 = y(acc), y1 = y(acc + v); acc += v;
+        const h = Math.max(0, y0 - y1 - (j < segs.length - 1 ? 0 : 0));
+        const top = j === segs.length - 1;
+        const c = CATS.find((cc) => cc.key === k).color;
+        g += top && h > 4
+          ? `<path d="M${x},${y0} V${y1 + 4} Q${x},${y1} ${x + 4},${y1} H${x + bw - 4} Q${x + bw},${y1} ${x + bw},${y1 + 4} V${y0} Z" fill="${c}"/>`
+          : `<rect x="${x}" y="${y1}" width="${bw}" height="${h}" fill="${c}"/>`;
+        if (!top) g += `<line x1="${x}" x2="${x + bw}" y1="${y1}" y2="${y1}" stroke="var(--surface)" stroke-width="2"/>`;
+      });
+      if (b.tick && i % every === 0) g += `<text x="${x + bw / 2}" y="${H - 8}" text-anchor="middle">${b.tick}</text>`;
+      g += `<rect class="hit" data-i="${i}" x="${L + i * slot}" y="${T}" width="${slot}" height="${H - T - B}" fill="transparent"/>`;
+    });
+    host.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(opts.aria)}">${g}</svg>`;
+    const tip = tipFor(host);
+    host.querySelectorAll(".hit").forEach((r) => {
+      const show = () => {
+        const b = buckets[+r.dataset.i]; const box = host.getBoundingClientRect(); const rb = r.getBoundingClientRect();
+        tip.innerHTML = `${esc(b.label)}<br><b>${money(tot(b))}</b> income` +
+          CATS.filter((c) => b.parts[c.key] > 0).map((c) => `<br>${c.label}: <b>${money(b.parts[c.key])}</b>`).join("") +
+          (b.expense ? `<br>Expenses: <b>${money(b.expense)}</b>` : "");
+        tip.style.left = (rb.left - box.left + rb.width / 2) + "px"; tip.style.top = (rb.top - box.top + 20) + "px"; tip.hidden = false;
+      };
+      r.addEventListener("mouseenter", show); r.addEventListener("click", show);
+      r.addEventListener("mouseleave", () => { tip.hidden = true; });
+    });
+  }
+  function renderHourly() {
+    const p = period();
+    const multi = (p.end - p.start) > 86400000;
+    const buckets = Array.from({ length: 24 }, (_, h) => ({ label: `${String(h).padStart(2, "0")}:00–${String(h + 1).padStart(2, "0")}:00${multi ? " (all days)" : ""}`, tick: String(h).padStart(2, "0"), parts: {}, expense: 0 }));
+    for (const r of cash) {
+      const h = local(r.at).getUTCHours(), k = catOf(r);
+      if (k === "expense") buckets[h].expense += Number(r.amount); else buckets[h].parts[k] = (buckets[h].parts[k] || 0) + Number(r.amount);
+    }
+    $("hourTitle").textContent = multi ? "Income by hour of day" : "Income by hour";
+    $("hourSub").textContent = p.label;
+    stackedBars($("hourChart"), buckets, { aria: "Income by hour" });
+  }
+  function renderDaily() {
+    const byDay = Object.fromEntries(daily.map((d) => [String(d.day).slice(0, 10), d]));
+    const today = new Date(nowMs() + offMin * 60000);
+    const buckets = [];
+    for (let i = 29; i >= 0; i--) {
+      const d = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate() - i));
+      const k = d.toISOString().slice(0, 10), r = byDay[k] || {};
+      const lbl = d.toLocaleDateString("en-PH", { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" });
+      buckets.push({ label: lbl, tick: d.toLocaleDateString("en-PH", { month: "short", day: "numeric", timeZone: "UTC" }),
+        parts: { pc: +r.pc_time || 0, food: +r.products || 0, topup: +r.topups || 0, ticket: +r.tickets || 0, other: +r.other_income || 0 }, expense: +r.expenses || 0 });
+    }
+    stackedBars($("dayChart"), buckets, { aria: "Daily income, last 30 days" });
+  }
+
+  // ---------- render: tables ----------
+  function renderFeed(highlightId) {
+    const rows = [...cash].sort((a, b) => b.id - a.id).slice(0, 15);
+    $("feed").innerHTML = rows.map((r) => `<tr class="${r.id === highlightId ? "new" : ""}">
+      <td class="num muted">${hhmm(r.at)}</td>
+      <td><span class="tag ${r.is_expense ? "exp" : ""}">${esc(r.is_expense ? "Expense" : (KIND[r.kind] || "Type " + r.kind))}</span><div class="muted" style="font-size:12px">${esc(r.note)}</div></td>
+      <td class="muted">${esc(r.admin_name)}</td>
+      <td class="r num">${r.is_expense ? "−" : ""}${money(r.amount, 2)}</td></tr>`).join("") || '<tr><td class="empty">No transactions in this period yet.</td></tr>';
+  }
+  function renderStaff() {
+    const by = {};
+    for (const r of cash) { const s = (by[r.admin_name] ||= []); s.push(r); }
+    const rows = Object.entries(by).map(([n, rs]) => [n, sums(rs)]).sort((a, b) => b[1].net - a[1].net);
+    $("staff").innerHTML = rows.map(([n, o]) => `<tr><td>${esc(n)}</td><td class="r num">${money(o.pc)}</td><td class="r num">${money(o.food)}</td><td class="r num">${money(o.topup)}</td><td class="r num">${money(o.expense)}</td><td class="r num"><b>${money(o.net)}</b></td></tr>`).join("") || '<tr><td colspan="6" class="empty">No activity in this period.</td></tr>';
+    $("staffSub").textContent = period().label;
+  }
+  function renderProducts() {
+    const by = {};
+    for (const m of moves) { if (m.direction !== 1) continue; const o = (by[m.product] ||= { qty: 0, total: 0 }); o.qty += m.qty; o.total += Number(m.total); }
+    const rows = Object.entries(by).sort((a, b) => b[1].total - a[1].total).slice(0, 10);
+    $("products").innerHTML = rows.map(([n, o]) => `<tr><td>${esc(n)}</td><td class="r num">${o.qty}</td><td class="r num">${money(o.total)}</td></tr>`).join("") || '<tr><td colspan="3" class="empty">No product sales in this period.</td></tr>';
+    $("prodSub").textContent = period().label;
+  }
+  function renderPCs() {
+    const by = {};
+    for (const s of sessions) { const o = (by[s.terminal_name] ||= { n: 0, min: 0, total: 0 }); o.n++; o.min += s.using_min; o.total += Number(s.total_price); }
+    const rows = Object.entries(by).sort((a, b) => b[1].total - a[1].total).slice(0, 10);
+    $("pcs").innerHTML = rows.map(([n, o]) => `<tr><td>${esc(n)}</td><td class="r num">${o.n}</td><td class="r num">${(o.min / 60).toFixed(1)}</td><td class="r num">${money(o.total)}</td></tr>`).join("") || '<tr><td colspan="4" class="empty">No sessions closed in this period.</td></tr>';
+    $("pcSub").textContent = period().label;
+  }
+  function renderMembers() {
+    const rows = [...members].filter((m) => m.active).sort((a, b) => b.balance - a.balance).slice(0, 10);
+    const owed = members.reduce((s, m) => s + Number(m.balance || 0), 0);
+    $("members").innerHTML = rows.map((m) => `<tr><td>${esc(m.username)}${m.logged_in ? ' <span class="tag">online</span>' : ""}</td><td class="r num">${money(m.balance, 2)}</td><td class="r num muted">${esc(m.last_login_on || "")}</td></tr>`).join("") || '<tr><td colspan="3" class="empty">No members synced yet.</td></tr>';
+    $("memSub").textContent = `${members.length} members · ${money(owed)} prepaid balance`;
+  }
+  function renderAgent() {
+    const el = $("syncPill");
+    if (!agent) { el.className = "pill bad"; el.textContent = demo ? "Sample data" : "No data yet: is the PanCafe PC agent running, and is your email on the access list?"; return; }
+    const age = (nowMs() - new Date(agent.last_seen).getTime()) / 1000;
+    const txt = age < 90 ? `Live · synced ${Math.max(0, Math.round(age))}s ago` : age < 3600 ? `PC offline ${Math.round(age / 60)} min` : `PC offline since ${new Date(agent.last_seen).toLocaleString("en-PH")}`;
+    el.className = "pill " + (age < 90 ? "good" : age < 600 ? "warn" : "bad");
+    el.textContent = txt;
+  }
+  function renderLegend() {
+    $("catLegend").innerHTML = CATS.map((c) => `<span><i style="background:${c.color}"></i>${c.label}</span>`).join("");
+  }
+  function renderAll() { renderMoney(); renderFloor(); renderHourly(); renderDaily(); renderFeed(); renderStaff(); renderProducts(); renderPCs(); renderMembers(); renderAgent(); }
+
+  // ---------- realtime ----------
+  function subscribe() {
+    if (demo) return;
+    sb.channel("pancafe")
+      .on("postgres_changes", { event: "*", schema: "public", table: "pancafe_terminals" }, (e) => {
+        if (e.eventType === "DELETE") terminals = terminals.filter((t) => t.id !== e.old.id);
+        else { const i = terminals.findIndex((t) => t.id === e.new.id); if (i >= 0) terminals[i] = e.new; else terminals.push(e.new); }
+        renderFloor();
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "pancafe_cash" }, (e) => {
+        if (e.eventType === "DELETE" || !inPeriod(e.new.at, period())) return;
+        const i = cash.findIndex((r) => r.id === e.new.id); if (i >= 0) cash[i] = e.new; else cash.push(e.new);
+        renderMoney(); renderHourly(); renderFeed(e.new.id); renderStaff();
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "pancafe_sessions" }, (e) => {
+        if (e.eventType === "DELETE" || !inPeriod(e.new.end_at, period())) return;
+        const i = sessions.findIndex((r) => r.id === e.new.id); if (i >= 0) sessions[i] = e.new; else sessions.push(e.new);
+        renderMoney(); renderPCs();
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "pancafe_agent_status" }, (e) => { agent = e.new; renderAgent(); })
+      .subscribe();
+  }
+
+  // ---------- boot ----------
+  async function refresh(full) {
+    try { if (full) await loadStatic(); await loadPeriod(); renderAll(); }
+    catch (err) { $("syncPill").className = "pill bad"; $("syncPill").textContent = "Can't load data: " + (err.message || err); }
+  }
+  async function start() {
+    $("login").hidden = true; $("app").hidden = false;
+    renderLegend();
+    await refresh(true);
+    subscribe();
+    setInterval(() => { renderFloor(); renderAgent(); }, 15000);          // tick clocks
+    setInterval(() => refresh(true), 5 * 60000);                         // safety net if realtime drops
+  }
+  let rz; addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(() => { if (!$("app").hidden) { renderHourly(); renderDaily(); } }, 200); });
+  $("rangeSeg").addEventListener("click", (e) => {
+    const b = e.target.closest("button"); if (!b) return;
+    range = b.dataset.r;
+    $("rangeSeg").querySelectorAll("button").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+    refresh(false);
+  });
+
+  if (demo) { start(); return; }
+
+  const msg = (t, err) => { $("loginMsg").textContent = t; $("loginMsg").className = "msg" + (err ? " err" : ""); };
+  $("loginForm").addEventListener("submit", async (e) => {
+    e.preventDefault(); msg("Signing in…");
+    const { error } = await sb.auth.signInWithPassword({ email: $("email").value.trim(), password: $("password").value });
+    if (error) msg(error.message, true);
+  });
+  $("signupBtn").addEventListener("click", async () => {
+    if (!$("loginForm").reportValidity()) return;
+    msg("Creating account…");
+    const { data, error } = await sb.auth.signUp({ email: $("email").value.trim(), password: $("password").value, options: { emailRedirectTo: location.href.split("#")[0] } });
+    if (error) msg(error.message, true);
+    else if (!data.session) msg("Check your email and click the confirmation link, then sign in here.");
+  });
+  $("signoutBtn").addEventListener("click", () => sb.auth.signOut());
+  let started = false;
+  sb.auth.onAuthStateChange((_ev, session) => {
+    if (session && !started) { started = true; start(); }
+    if (!session) { started = false; $("app").hidden = true; $("login").hidden = false; }
+  });
+})();
+</script>
+</body>
+</html>
