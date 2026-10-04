@@ -1,0 +1,54 @@
+# Builds the Android app (APK) and the Windows installer, and publishes both
+# on the "apps" release so the download links stay the same.
+name: Build apps
+
+on:
+  push:
+    branches: [main]
+    paths: ["apps/**", "icons/**", ".github/workflows/apps.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: "17" }
+      - uses: gradle/actions/setup-gradle@v4
+        with: { gradle-version: "8.9" }
+      - run: gradle -p apps/android assembleDebug --no-daemon
+      - run: cp apps/android/app/build/outputs/apk/debug/app-debug.apk PancafeLive.apk
+      - uses: actions/upload-artifact@v4
+        with: { name: android, path: PancafeLive.apk }
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "20" }
+      - run: npm install --no-audit --no-fund
+        working-directory: apps/windows
+      - run: npm run dist
+        working-directory: apps/windows
+      - uses: actions/upload-artifact@v4
+        with: { name: windows, path: apps/windows/dist/PancafeLive-Setup.exe }
+
+  release:
+    needs: [android, windows]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { merge-multiple: true }
+      - name: Publish to the "apps" release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release view apps >/dev/null 2>&1 || gh release create apps --title "Pancafe Live apps" \
+            --notes "Android: download PancafeLive.apk on your phone and open it. Windows: download PancafeLive-Setup.exe and run it."
+          gh release upload apps PancafeLive.apk PancafeLive-Setup.exe --clobber

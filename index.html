@@ -5,8 +5,15 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Pancafe Live</title>
 <meta name="theme-color" content="#0e1a17">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Pancafe Live">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<script>try { const t = localStorage.getItem("pcl-theme"); if (t && t !== "auto") document.documentElement.dataset.theme = t; } catch (e) {}</script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
 <script src="vendor/chart.umd.js"></script>
 <script src="config.js"></script>
@@ -16,35 +23,88 @@
 :root {
   --bg: #f3f5f4; --surface: #ffffff; --surface-2: #eef1ef; --line: #e1e6e3; --line-2: #cfd6d2;
   --ink: #101614; --ink-2: #47524d; --ink-3: #75807a;
-  --rail: #0e1a17; --rail-ink: #b8c6c0; --rail-active: #1d322c; --rail-accent: #4fd1a5;
-  --accent: #0d7a5f; --accent-soft: #dcf1e9; --accent-ink: #ffffff;
+  --rail: #0e1a17; --rail-ink: #b8c6c0; --rail-active: #1d322c; --rail-accent: #4fd1a5; --rail-line: #2a3b35; --rail-tile: #1a2a25;
+  --accent: #0d7a5f; --accent-soft: #dcf1e9; --accent-ink: #ffffff; --seq-0: #eef1ef;
   --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; --s5: #8a63d2; --s-other: #a3aca7;
-  --seq-0: #eef1ef; --seq-1: #cde2fb; --seq-2: #9ec5f4; --seq-3: #5598e7; --seq-4: #256abf; --seq-5: #104281;
+  --seq-1: #cde2fb; --seq-2: #9ec5f4; --seq-3: #5598e7; --seq-4: #256abf; --seq-5: #104281;
   --good: #0a7d32; --good-bg: #dff3e5; --warn: #9a6200; --warn-bg: #fdf0d4; --bad: #c0352b; --bad-bg: #fde4e1;
-  --shadow: 0 1px 2px rgb(16 22 20 / .06), 0 1px 1px rgb(16 22 20 / .04);
+  --shadow: 0 1px 2px rgb(16 22 20 / .06), 0 1px 1px rgb(16 22 20 / .04); color-scheme: light;
   --f-body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
   --f-num: "IBM Plex Sans Condensed", "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
   --f-mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
   --r: 12px;
 }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+/* "auto" (no data-theme) follows the device's light/dark setting */
+@media (prefers-color-scheme: dark) { :root:not([data-theme]) {
   --bg: #0c1110; --surface: #141b19; --surface-2: #1b2421; --line: #24302c; --line-2: #33413c;
   --ink: #eef3f1; --ink-2: #b4c0bb; --ink-3: #85928c;
-  --rail: #080d0c; --rail-ink: #9fb0a9; --rail-active: #16241f; --rail-accent: #4fd1a5;
-  --accent: #3cc795; --accent-soft: #143329; --accent-ink: #062016;
+  --rail: #080d0c; --rail-ink: #9fb0a9; --rail-active: #16241f; --rail-accent: #4fd1a5; --rail-line: #22302b; --rail-tile: #1a2a25;
+  --accent: #3cc795; --accent-soft: #143329; --accent-ink: #062016; --seq-0: #1b2421;
   --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #9d85e9; --s-other: #6c776f;
-  --seq-0: #1b2421; --seq-1: #173b66; --seq-2: #184f95; --seq-3: #2a78d6; --seq-4: #5598e7; --seq-5: #9ec5f4;
+  --seq-1: #173b66; --seq-2: #184f95; --seq-3: #2a78d6; --seq-4: #5598e7; --seq-5: #9ec5f4;
   --good: #5fd38a; --good-bg: #173322; --warn: #f0b54a; --warn-bg: #3a2c10; --bad: #ff8a7a; --bad-bg: #3d1915;
-  --shadow: none; color-scheme: dark; } }
+  --shadow: none; color-scheme: dark;
+} }
+:root[data-theme="light"] {
+  --bg: #f3f5f4; --surface: #ffffff; --surface-2: #eef1ef; --line: #e1e6e3; --line-2: #cfd6d2;
+  --ink: #101614; --ink-2: #47524d; --ink-3: #75807a;
+  --rail: #0e1a17; --rail-ink: #b8c6c0; --rail-active: #1d322c; --rail-accent: #4fd1a5; --rail-line: #2a3b35; --rail-tile: #1a2a25;
+  --accent: #0d7a5f; --accent-soft: #dcf1e9; --accent-ink: #ffffff; --seq-0: #eef1ef;
+  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; --s5: #8a63d2; --s-other: #a3aca7;
+  --seq-1: #cde2fb; --seq-2: #9ec5f4; --seq-3: #5598e7; --seq-4: #256abf; --seq-5: #104281;
+  --good: #0a7d32; --good-bg: #dff3e5; --warn: #9a6200; --warn-bg: #fdf0d4; --bad: #c0352b; --bad-bg: #fde4e1;
+  --shadow: 0 1px 2px rgb(16 22 20 / .06), 0 1px 1px rgb(16 22 20 / .04); color-scheme: light;
+}
+:root[data-theme="ocean"] {
+  --bg: #f2f5f9; --surface: #ffffff; --surface-2: #eaf0f7; --line: #dde5ef; --line-2: #c9d4e2;
+  --ink: #0f1724; --ink-2: #45526a; --ink-3: #6c788c;
+  --rail: #0d1b33; --rail-ink: #b5c3da; --rail-active: #1a2d4f; --rail-accent: #6cb4ff; --rail-line: #263b5e; --rail-tile: #16264a;
+  --accent: #1d5fc2; --accent-soft: #dde9fa; --accent-ink: #ffffff; --seq-0: #eaf0f7;
+  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; --s5: #8a63d2; --s-other: #a3aca7;
+  --seq-1: #cde2fb; --seq-2: #9ec5f4; --seq-3: #5598e7; --seq-4: #256abf; --seq-5: #104281;
+  --good: #0a7d32; --good-bg: #dff3e5; --warn: #9a6200; --warn-bg: #fdf0d4; --bad: #c0352b; --bad-bg: #fde4e1;
+  --shadow: 0 1px 2px rgb(16 22 20 / .06), 0 1px 1px rgb(16 22 20 / .04); color-scheme: light;
+}
+:root[data-theme="rose"] {
+  --bg: #f7f3f1; --surface: #ffffff; --surface-2: #f1ebe8; --line: #e8dfdb; --line-2: #d8ccc6;
+  --ink: #1c1416; --ink-2: #57474b; --ink-3: #83737a;
+  --rail: #2a1520; --rail-ink: #d5bcc6; --rail-active: #3d2230; --rail-accent: #f48fb1; --rail-line: #4a2c3b; --rail-tile: #3a2030;
+  --accent: #a93a64; --accent-soft: #f7e1ea; --accent-ink: #ffffff; --seq-0: #f1ebe8;
+  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; --s5: #8a63d2; --s-other: #a3aca7;
+  --seq-1: #cde2fb; --seq-2: #9ec5f4; --seq-3: #5598e7; --seq-4: #256abf; --seq-5: #104281;
+  --good: #0a7d32; --good-bg: #dff3e5; --warn: #9a6200; --warn-bg: #fdf0d4; --bad: #c0352b; --bad-bg: #fde4e1;
+  --shadow: 0 1px 2px rgb(16 22 20 / .06), 0 1px 1px rgb(16 22 20 / .04); color-scheme: light;
+}
 :root[data-theme="dark"] {
   --bg: #0c1110; --surface: #141b19; --surface-2: #1b2421; --line: #24302c; --line-2: #33413c;
   --ink: #eef3f1; --ink-2: #b4c0bb; --ink-3: #85928c;
-  --rail: #080d0c; --rail-ink: #9fb0a9; --rail-active: #16241f; --rail-accent: #4fd1a5;
-  --accent: #3cc795; --accent-soft: #143329; --accent-ink: #062016;
+  --rail: #080d0c; --rail-ink: #9fb0a9; --rail-active: #16241f; --rail-accent: #4fd1a5; --rail-line: #22302b; --rail-tile: #1a2a25;
+  --accent: #3cc795; --accent-soft: #143329; --accent-ink: #062016; --seq-0: #1b2421;
   --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #9d85e9; --s-other: #6c776f;
-  --seq-0: #1b2421; --seq-1: #173b66; --seq-2: #184f95; --seq-3: #2a78d6; --seq-4: #5598e7; --seq-5: #9ec5f4;
+  --seq-1: #173b66; --seq-2: #184f95; --seq-3: #2a78d6; --seq-4: #5598e7; --seq-5: #9ec5f4;
   --good: #5fd38a; --good-bg: #173322; --warn: #f0b54a; --warn-bg: #3a2c10; --bad: #ff8a7a; --bad-bg: #3d1915;
-  --shadow: none; color-scheme: dark; }
+  --shadow: none; color-scheme: dark;
+}
+:root[data-theme="midnight"] {
+  --bg: #0a0f1c; --surface: #111829; --surface-2: #172034; --line: #1f2a40; --line-2: #2c3953;
+  --ink: #eaf0fb; --ink-2: #b0bdd4; --ink-3: #8090ab;
+  --rail: #060a14; --rail-ink: #9fb0cc; --rail-active: #152038; --rail-accent: #7cb6ff; --rail-line: #1f2c46; --rail-tile: #142038;
+  --accent: #7cb6ff; --accent-soft: #16294a; --accent-ink: #04122a; --seq-0: #172034;
+  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #9d85e9; --s-other: #6c776f;
+  --seq-1: #173b66; --seq-2: #184f95; --seq-3: #2a78d6; --seq-4: #5598e7; --seq-5: #9ec5f4;
+  --good: #5fd38a; --good-bg: #173322; --warn: #f0b54a; --warn-bg: #3a2c10; --bad: #ff8a7a; --bad-bg: #3d1915;
+  --shadow: none; color-scheme: dark;
+}
+:root[data-theme="graphite"] {
+  --bg: #101112; --surface: #18191b; --surface-2: #202124; --line: #2a2b2e; --line-2: #3a3b3f;
+  --ink: #f0f0f0; --ink-2: #bdbdbd; --ink-3: #8d8d8d;
+  --rail: #0a0a0b; --rail-ink: #a9a9a9; --rail-active: #232326; --rail-accent: #f0c05a; --rail-line: #2c2c30; --rail-tile: #1e1e21;
+  --accent: #f0c05a; --accent-soft: #3a3020; --accent-ink: #1a1406; --seq-0: #202124;
+  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #9d85e9; --s-other: #6c776f;
+  --seq-1: #173b66; --seq-2: #184f95; --seq-3: #2a78d6; --seq-4: #5598e7; --seq-5: #9ec5f4;
+  --good: #5fd38a; --good-bg: #173322; --warn: #f0b54a; --warn-bg: #3a2c10; --bad: #ff8a7a; --bad-bg: #3d1915;
+  --shadow: none; color-scheme: dark;
+}
 
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; }
@@ -69,8 +129,22 @@ button, select, input { font: inherit; color: inherit; }
 .nav button:hover { background: var(--rail-active); color: #fff; }
 .nav button[aria-current="page"] { background: var(--rail-active); color: #fff; box-shadow: inset 3px 0 0 var(--rail-accent); }
 .rail-foot { margin-top: auto; padding: 10px; font-size: 12px; display: grid; gap: 8px; }
-.rail-foot button { border: 1px solid #2a3b35; background: transparent; color: var(--rail-ink); border-radius: 8px; padding: 7px 10px; cursor: pointer; }
-.rail-foot button:hover { color: #fff; border-color: #3d544c; }
+.rail-foot button { border: 1px solid var(--rail-line); background: transparent; color: var(--rail-ink); border-radius: 8px; padding: 7px 10px; cursor: pointer; }
+.rail-foot button:hover { color: #fff; border-color: var(--rail-ink); }
+
+.theme-btn { display: flex; align-items: center; justify-content: center; gap: 8px; }
+.theme-btn svg { width: 16px; height: 16px; }
+.theme-pop { position: fixed; z-index: 50; width: 260px; background: var(--surface); color: var(--ink); border: 1px solid var(--line-2); border-radius: 12px; padding: 8px; box-shadow: 0 12px 32px rgb(0 0 0 / .25); }
+.theme-pop h3 { font: 600 11px/1 var(--f-body); letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); margin: 6px 8px 8px; }
+.theme-pop button { display: flex; align-items: center; gap: 10px; width: 100%; border: 0; background: transparent; padding: 7px 8px; border-radius: 8px; cursor: pointer; text-align: left; }
+.theme-pop button:hover { background: var(--surface-2); }
+.theme-pop button[aria-checked="true"] { background: var(--accent-soft); }
+.theme-pop button[aria-checked="true"]::after { content: "✓"; margin-left: auto; color: var(--accent); font-weight: 700; }
+.theme-pop button small { display: block; color: var(--ink-3); font-size: 11.5px; }
+.sw { flex: none; width: 34px; height: 24px; border-radius: 6px; display: grid; grid-template-columns: 10px 1fr; overflow: hidden; border: 1px solid rgb(127 127 127 / .35); }
+.sw i:first-child { background: var(--a); } .sw i:last-child { background: var(--b); position: relative; }
+.sw i:last-child::after { content: ""; position: absolute; left: 4px; right: 4px; bottom: 4px; height: 4px; border-radius: 2px; background: var(--c); }
+.sw.auto i:last-child { background: linear-gradient(135deg, #f3f5f4 50%, #0c1110 50%); }
 
 .main { min-width: 0; }
 .top { position: sticky; top: 0; z-index: 10; background: color-mix(in srgb, var(--bg) 92%, transparent); backdrop-filter: blur(8px); border-bottom: 1px solid var(--line); }
@@ -191,7 +265,7 @@ tbody tr:hover td { background: var(--surface-2); }
 .login-side h2 { color: #fff; font: 700 34px/1.15 var(--f-body); letter-spacing: -0.02em; margin: 0 0 12px; max-width: 14ch; }
 .login-side p { max-width: 42ch; margin: 0; }
 .login-side .mini { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; max-width: 320px; }
-.login-side .mini i { aspect-ratio: 1; border-radius: 5px; background: #1a2a25; }
+.login-side .mini i { aspect-ratio: 1; border-radius: 5px; background: var(--rail-tile); }
 .login-side .mini i.on { background: var(--rail-accent); }
 .login { align-self: center; justify-self: center; width: min(380px, 100%); padding-inline: 20px; padding-block: 40px; }
 .login h1 { font: 700 26px/1.2 var(--f-body); margin: 0 0 6px; }
@@ -248,7 +322,7 @@ tbody tr:hover td { background: var(--surface-2); }
 <div id="login" class="login-wrap" hidden>
   <aside class="login-side">
     <div class="logo">
-      <svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true"><rect x="2" y="5" width="24" height="15" rx="3" fill="none" stroke="#4fd1a5" stroke-width="2"/><path d="M10 24h8M14 20v4" stroke="#4fd1a5" stroke-width="2" stroke-linecap="round"/></svg>
+      <svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true"><rect x="2" y="5" width="24" height="15" rx="3" fill="none" style="stroke:var(--rail-accent)" stroke-width="2"/><path d="M10 24h8M14 20v4" style="stroke:var(--rail-accent)" stroke-width="2" stroke-linecap="round"/></svg>
       <div><b>Pancafe Live</b></div>
     </div>
     <div>
@@ -273,7 +347,7 @@ tbody tr:hover td { background: var(--surface-2); }
 <div id="app" class="shell" hidden>
   <aside class="rail">
     <div class="logo">
-      <svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true"><rect x="2" y="5" width="24" height="15" rx="3" fill="none" stroke="#4fd1a5" stroke-width="2"/><path d="M10 24h8M14 20v4" stroke="#4fd1a5" stroke-width="2" stroke-linecap="round"/></svg>
+      <svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true"><rect x="2" y="5" width="24" height="15" rx="3" fill="none" style="stroke:var(--rail-accent)" stroke-width="2"/><path d="M10 24h8M14 20v4" style="stroke:var(--rail-accent)" stroke-width="2" stroke-linecap="round"/></svg>
       <div><b>Pancafe Live</b><small>PANCAFE PRO SERVER</small></div>
     </div>
     <nav class="nav" id="nav" aria-label="Sections">
@@ -286,9 +360,12 @@ tbody tr:hover td { background: var(--surface-2); }
     </nav>
     <div class="rail-foot">
       <div class="who" id="who"></div>
+      <button type="button" id="installBtn" class="theme-btn" hidden><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M10 3v9M6 8.5 10 12.5 14 8.5M4 15.5h12"/></svg>Install app</button>
+      <button type="button" id="themeBtn" class="theme-btn" aria-haspopup="true" aria-expanded="false"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M10 2.5a7.5 7.5 0 1 0 0 15c1.2 0 1.6-.9 1.2-1.8-.5-1-.1-2.2 1.2-2.2h1.6a3.5 3.5 0 0 0 3.5-3.5c0-4.1-3.4-7.5-7.5-7.5Z"/><circle cx="6.5" cy="9" r="1"/><circle cx="9" cy="6" r="1"/><circle cx="13" cy="6.5" r="1"/></svg>Theme</button>
       <button type="button" id="signoutBtn">Sign out</button>
     </div>
   </aside>
+  <div class="theme-pop" id="themePop" role="menu" aria-label="Theme" hidden></div>
 
   <div class="main">
     <header class="top">
@@ -637,7 +714,7 @@ tbody tr:hover td { background: var(--surface-2); }
     const isCat = (k) => (r) => catOf(r) === k;
     const sessPrev = null;
     const cards = [
-      { hero: true, lbl: "Net income", val: money(o.net), d: delta(o.net, po.net, p.prevLabel), spark: sp((r) => !r.is_expense), color: "#4fd1a5" },
+      { hero: true, lbl: "Net income", val: money(o.net), d: delta(o.net, po.net, p.prevLabel), spark: sp((r) => !r.is_expense), color: css("--rail-accent") },
       { lbl: "PC time", dot: "--s1", val: money(o.pc), d: delta(o.pc, po.pc, p.prevLabel), spark: sp(isCat("pc")), color: css("--s1") },
       { lbl: "Food & drinks", dot: "--s2", val: money(o.food), d: delta(o.food, po.food, p.prevLabel), spark: sp(isCat("food")), color: css("--s2") },
       { lbl: "Member top-ups", dot: "--s3", val: money(o.topup), d: delta(o.topup, po.topup, p.prevLabel), spark: sp(isCat("topup")), color: css("--s3") },
@@ -949,7 +1026,56 @@ tbody tr:hover td { background: var(--surface-2); }
     refresh(false);
   });
   ["fromDate", "toDate"].forEach((id) => $(id).addEventListener("change", () => { if ($("toDate").value < $("fromDate").value) $("toDate").value = $("fromDate").value; refresh(false); }));
-  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { if (!$("app").hidden) renderView(); });
+  // ---------- themes ----------
+  const THEMES = [
+    ["auto", "Automatic", "Follows your device", null],
+    ["light", "Emerald", "Light, green accents", ["#0e1a17", "#f3f5f4", "#0d7a5f"]],
+    ["ocean", "Ocean", "Light, blue accents", ["#0d1b33", "#f2f5f9", "#1d5fc2"]],
+    ["rose", "Rose", "Light, warm accents", ["#2a1520", "#f7f3f1", "#a93a64"]],
+    ["dark", "Emerald dark", "Dark, green accents", ["#080d0c", "#141b19", "#3cc795"]],
+    ["midnight", "Midnight", "Dark navy, blue accents", ["#060a14", "#111829", "#7cb6ff"]],
+    ["graphite", "Graphite", "Dark grey, gold accents", ["#0a0a0b", "#18191b", "#f0c05a"]],
+  ];
+  const themeNow = () => document.documentElement.dataset.theme || "auto";
+  function setMetaColor() { const m = document.querySelector('meta[name="theme-color"]'); if (m) m.content = css("--rail") || "#0e1a17"; }
+  function applyTheme(t) {
+    if (t === "auto") delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = t;
+    try { localStorage.setItem("pcl-theme", t); } catch (e) {}
+    setMetaColor(); drawThemePop();
+  }
+  function drawThemePop() {
+    $("themePop").innerHTML = "<h3>Theme</h3>" + THEMES.map(([k, name, sub, c]) =>
+      `<button type="button" role="menuitemradio" aria-checked="${themeNow() === k}" data-t="${k}">` +
+      `<span class="sw${c ? "" : " auto"}"${c ? ` style="--a:${c[0]};--b:${c[1]};--c:${c[2]}"` : ""}><i></i><i></i></span>` +
+      `<span>${name}<small>${sub}</small></span></button>`).join("");
+  }
+  function toggleThemePop(open) {
+    const pop = $("themePop"), btn = $("themeBtn");
+    open = open ?? pop.hidden;
+    pop.hidden = !open; btn.setAttribute("aria-expanded", String(open));
+    if (!open) return;
+    drawThemePop();
+    const r = btn.getBoundingClientRect(), w = 260, h = pop.offsetHeight;
+    const left = Math.min(Math.max(8, r.left), innerWidth - w - 8);
+    const top = r.top - h - 8 > 8 ? r.top - h - 8 : r.bottom + 8;
+    pop.style.left = left + "px"; pop.style.top = top + "px";
+    pop.querySelector('[aria-checked="true"]')?.focus();
+  }
+  $("themeBtn").addEventListener("click", (e) => { e.stopPropagation(); toggleThemePop(); });
+  $("themePop").addEventListener("click", (e) => { const b = e.target.closest("button[data-t]"); if (b) applyTheme(b.dataset.t); });
+  document.addEventListener("click", (e) => { if (!$("themePop").hidden && !e.target.closest("#themePop")) toggleThemePop(false); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("themePop").hidden) { toggleThemePop(false); $("themeBtn").focus(); } });
+  addEventListener("resize", () => toggleThemePop(false));
+  setMetaColor();
+
+  // Installable app: offline shell (see sw.js). Skipped in the local preview.
+  if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js").catch(() => {});
+  let installEvt = null;
+  addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); installEvt = e; $("installBtn").hidden = false; });
+  addEventListener("appinstalled", () => { installEvt = null; $("installBtn").hidden = true; });
+  $("installBtn").addEventListener("click", async () => { if (!installEvt) return; installEvt.prompt(); await installEvt.userChoice; installEvt = null; $("installBtn").hidden = true; });
+
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { setMetaColor(); if (!$("app").hidden) renderView(); });
   new MutationObserver(() => { if (!$("app").hidden) renderView(); }).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
 
   if (demo) { start(null); return; }

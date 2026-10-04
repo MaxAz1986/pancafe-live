@@ -1,0 +1,25 @@
+{
+  "name": "pancafe-live",
+  "productName": "Pancafe Live",
+  "version": "1.0.0",
+  "description": "Live dashboard for the PanCafe Pro server",
+  "author": "MaxAz1986",
+  "main": "main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win nsis --x64 --publish never"
+  },
+  "devDependencies": {
+    "electron": "31.7.7",
+    "electron-builder": "24.13.3"
+  },
+  "build": {
+    "appId": "live.pancafe.app",
+    "productName": "Pancafe Live",
+    "directories": { "output": "dist", "buildResources": "build" },
+    "files": ["main.js", "offline.html"],
+    "win": { "target": "nsis", "icon": "build/icon.png", "artifactName": "PancafeLive-Setup.exe" },
+    "nsis": { "oneClick": true, "perMachine": false, "createDesktopShortcut": true, "createStartMenuShortcut": true, "shortcutName": "Pancafe Live" }
+  }
+}
