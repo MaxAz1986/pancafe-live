@@ -181,7 +181,7 @@ button, select, input { font: inherit; color: inherit; }
 .legend i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
 
 /* KPI cards */
-.kpis { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 16px; }
+.kpis { display: grid; grid-template-columns: repeat(var(--kpi-n, 5), minmax(0, 1fr)); gap: 16px; }
 .kpi { padding: 14px 16px 10px; display: flex; flex-direction: column; gap: 2px; }
 .kpi .lbl { font-size: 12px; font-weight: 600; color: var(--ink-3); display: flex; align-items: center; gap: 7px; }
 .kpi .lbl i { width: 9px; height: 9px; border-radius: 3px; }
@@ -355,6 +355,7 @@ tbody tr:hover td { background: var(--surface-2); }
       <button type="button" data-v="pcs"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2" y="3" width="16" height="10" rx="2"/><path d="M7 17h6M10 13v4"/></svg>PCs</button>
       <button type="button" data-v="sales"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 16V9M8 16V4M13 16v-5M18 16V7"/></svg>Sales</button>
       <button type="button" data-v="products"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 7h12l-1 10H5L4 7Z"/><path d="M7 7V5a3 3 0 0 1 6 0v2"/></svg>Food &amp; drinks</button>
+      <button type="button" data-v="pos" id="navPos" hidden><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="2.5" width="14" height="15" rx="2"/><path d="M6.5 6.5h7M6.5 9.5h7M6.5 12.5h4"/></svg>POS</button>
       <button type="button" data-v="staff"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="10" cy="7" r="3.5"/><path d="M3.5 17c1-3.5 3.6-5 6.5-5s5.5 1.5 6.5 5"/></svg>Staff</button>
       <button type="button" data-v="members"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2.5" y="4" width="15" height="12" rx="2"/><circle cx="7.5" cy="9.5" r="2"/><path d="M11.5 8.5h3.5M11.5 11.5h3.5"/></svg>Members</button>
     </nav>
@@ -489,6 +490,29 @@ tbody tr:hover td { background: var(--surface-2); }
         </div>
       </section>
 
+      <!-- POS -->
+      <section data-view="pos" hidden>
+        <div class="kpis" id="posKpis" style="--kpi-n:4;margin-bottom:16px"></div>
+        <div class="grid">
+          <div class="card c7">
+            <div class="card-h"><h2>Best sellers</h2><span class="sub" id="posTopSub"></span></div>
+            <div class="chart-box tall"><canvas id="posTopChart"></canvas></div>
+          </div>
+          <div class="card c5">
+            <div class="card-h"><h2>How customers paid</h2><span class="sub" id="posPaySub"></span></div>
+            <div class="tbl-wrap"><table><thead><tr><th>Payment</th><th class="r">Receipts</th><th class="r">Amount</th><th>Share</th></tr></thead><tbody id="posPayTable"></tbody></table></div>
+          </div>
+          <div class="card c5">
+            <div class="card-h"><h2>By category</h2><span class="sub" id="posCatSub"></span></div>
+            <div class="tbl-wrap"><table><thead><tr><th>Category</th><th class="r">Qty</th><th class="r">Amount</th><th>Share</th></tr></thead><tbody id="posCatTable"></tbody></table></div>
+          </div>
+          <div class="card c7">
+            <div class="card-h"><h2>Receipts</h2><span class="sub">newest first</span></div>
+            <div class="tbl-wrap" style="max-height:420px"><table><thead><tr><th>Time</th><th>Items</th><th>Cashier</th><th>Payment</th><th class="r">Total</th></tr></thead><tbody id="posReceipts"></tbody></table></div>
+          </div>
+        </div>
+      </section>
+
       <!-- STAFF -->
       <section data-view="staff" hidden>
         <div class="grid">
@@ -502,7 +526,7 @@ tbody tr:hover td { background: var(--surface-2); }
             <div class="tbl-wrap feed"><table><thead><tr><th>Day</th><th>Staff</th><th class="r">From</th><th class="r">To</th><th class="r">Net</th></tr></thead><tbody id="shiftTable"></tbody></table></div>
           </div>
           <div class="card c12">
-            <div class="tbl-wrap"><table><thead><tr><th>Staff</th><th class="r">PC time</th><th class="r">Food</th><th class="r">Top-ups</th><th class="r">Other</th><th class="r">Expenses</th><th class="r">Net</th></tr></thead><tbody id="staffTable"></tbody></table></div>
+            <div class="tbl-wrap"><table><thead><tr><th>Staff</th><th class="r">PC time</th><th class="r">Food</th><th class="r">Top-ups</th><th class="r">POS</th><th class="r">Other</th><th class="r">Expenses</th><th class="r">Net</th></tr></thead><tbody id="staffTable"></tbody></table></div>
           </div>
         </div>
       </section>
@@ -533,12 +557,13 @@ tbody tr:hover td { background: var(--surface-2); }
   const CFG = window.PANCAFE_CONFIG || {};
   const TZ = CFG.utcOffset || "+08:00";               // the cafe's local time (Philippines)
   const CUR = CFG.currency || "₱";
-  const KIND = { 1: "PC time", 2: "Food & drinks", 3: "Manual entry", 4: "Member top-up", 6: "Refund", 8: "Ticket sale" };
+  const KIND = { 1: "PC time", 2: "Food & drinks", 3: "Manual entry", 4: "Member top-up", 6: "Refund", 8: "Ticket sale", pos: "POS sale", posret: "POS refund", posexp: "POS expense" };
   const CATS = [ // income categories, fixed color order
     { key: "pc", label: "PC time", v: "--s1", kinds: [1] },
     { key: "food", label: "Food & drinks", v: "--s2", kinds: [2] },
     { key: "topup", label: "Member top-ups", v: "--s3", kinds: [4] },
     { key: "ticket", label: "Tickets", v: "--s4", kinds: [8] },
+    { key: "pos", label: "POS sales", v: "--s5", kinds: ["pos", "posret"] },
     { key: "other", label: "Other", v: "--s-other", kinds: null },
   ];
   const $ = (id) => document.getElementById(id);
@@ -618,7 +643,7 @@ tbody tr:hover td { background: var(--surface-2); }
   const inWin = (t, a, b) => { const x = new Date(t).getTime(); return x >= a.getTime() && x < b.getTime(); };
 
   // ---------- state ----------
-  let cash = [], prevCash = [], sessions = [], moves = [], terminals = [], members = [], products = [], dayRows = [], agent = null;
+  let cash = [], prevCash = [], sessions = [], moves = [], terminals = [], members = [], products = [], dayRows = [], posItems = [], posAllItems = [], posSales = [], posReady = false, agent = null;
 
   async function loadPeriod() {
     const p = period();
@@ -631,26 +656,55 @@ tbody tr:hover td { background: var(--surface-2); }
       q("pancafe_sessions", win("end_at", s, e), dwin("end_at", s, e)),
       q("pancafe_stock_moves", win("at", s, e), dwin("at", s, e)),
     ]);
+    const pos = await loadPos(ps, e);
+    posSales = pos.sales.filter((r) => inWin(r.at, p.start, p.end));
+    posItems = pos.items.filter((r) => inWin(r.at, p.start, p.end));
+    posAllItems = pos.allItems.filter((r) => inWin(r.at, p.start, p.end));
+    both = both.concat(pos.rows);
     cash = both.filter((r) => inWin(r.at, p.start, p.end));
     prevCash = both.filter((r) => inWin(r.at, p.prevStart, p.prevEnd));
   }
+  // ---------- POS (sales from the shop's POS app) ----------
+  // POS rows are turned into the same shape as PanCafe's cash rows, so every chart and total includes them.
+  const posCounts = (s) => s.status === "Completed" && s.credit_paid !== false;
+  const posRow = (s) => ({ id: "s" + s.id, at: s.at, kind: "pos", is_expense: false, amount: s.total, admin_name: s.cashier, note: [s.payment_type, s.store].filter(Boolean).join(" · "), pos: s });
+  const posRetRow = (r) => ({ id: "r" + r.id, at: r.at, kind: "posret", is_expense: false, amount: -r.amount, admin_name: "", note: "Refund on POS sale #" + r.sale_id });
+  const posExpRow = (x) => ({ id: "e" + x.id, at: x.at, kind: "posexp", is_expense: true, amount: x.amount, admin_name: "", note: [x.title, x.type].filter(Boolean).join(" · ") });
+  async function loadPos(a, b) {
+    const win = (col) => (t) => t.select("*").gte(col, a).lt(col, b).order("id");
+    const dwin = (col) => (rows) => rows.filter((r) => inWin(r[col], new Date(a), new Date(b)));
+    try {
+      const [sales, items, rets, exps] = await Promise.all([
+        q("pancafe_pos_sales", win("at"), dwin("at")), q("pancafe_pos_items", win("at"), dwin("at")),
+        q("pancafe_pos_returns", win("at"), dwin("at")), q("pancafe_pos_expenses", win("at"), dwin("at"))]);
+      posReady = true;
+      const ok = new Set(sales.filter(posCounts).map((s) => s.id));
+      return { sales, allItems: items, items: items.filter((i) => ok.has(i.sale_id)),
+        rows: [...sales.filter(posCounts).map(posRow), ...rets.filter((r) => r.status === "Completed").map(posRetRow), ...exps.map(posExpRow)] };
+    } catch (err) { posReady = false; return { sales: [], items: [], allItems: [], rows: [] }; } // POS tables not set up yet
+  }
+
   async function loadStatic() {
     // last 31 business days of cash, for the daily chart, top-ups chart and heatmap
     const since = new Date(nowMs() - 32 * 86400000).toISOString();
     const all = (t) => t.select("*");
-    [terminals, members, products, dayRows] = await Promise.all([
+    let pos;
+    [terminals, members, products, dayRows, pos] = await Promise.all([
       q("pancafe_terminals", all), q("pancafe_members", all), q("pancafe_products", all),
       q("pancafe_cash", (t) => t.select("id,at,amount,kind,is_expense").gte("at", since).order("id"),
         (r) => r.filter((x) => new Date(x.at) >= new Date(since))),
+      loadPos(since, new Date(nowMs() + 86400000).toISOString()),
     ]);
+    dayRows = dayRows.concat(pos.rows);
+    $("navPos").hidden = !posReady;
     const a = await q("pancafe_agent_status", all); agent = a[0] || null;
   }
 
   // ---------- helpers ----------
   function sums(rows) {
-    const o = { pc: 0, food: 0, topup: 0, ticket: 0, other: 0, expense: 0, n: rows.length };
+    const o = { expense: 0, n: rows.length }; for (const c of CATS) o[c.key] = 0;
     for (const r of rows) o[catOf(r)] += Number(r.amount);
-    o.income = o.pc + o.food + o.topup + o.ticket + o.other;
+    o.income = CATS.reduce((a, c) => a + o[c.key], 0);
     o.net = o.income - o.expense;
     return o;
   }
@@ -725,8 +779,10 @@ tbody tr:hover td { background: var(--surface-2); }
       { lbl: "PC time", dot: "--s1", val: money(o.pc), d: delta(o.pc, po.pc, p.prevLabel), spark: sp(isCat("pc")), color: css("--s1") },
       { lbl: "Food & drinks", dot: "--s2", val: money(o.food), d: delta(o.food, po.food, p.prevLabel), spark: sp(isCat("food")), color: css("--s2") },
       { lbl: "Member top-ups", dot: "--s3", val: money(o.topup), d: delta(o.topup, po.topup, p.prevLabel), spark: sp(isCat("topup")), color: css("--s3") },
+      ...(posReady ? [{ lbl: "POS sales", dot: "--s5", val: money(o.pos), d: delta(o.pos, po.pos, p.prevLabel), spark: sp(isCat("pos")), color: css("--s5") }] : []),
       { lbl: "Sessions closed", val: sessions.length.toLocaleString(), d: `<span class="delta flat"><small>${money(o.expense)} expenses · ${money(o.ticket + o.other)} other</small></span>`, spark: buckets(sessions, "end_at", () => 1), color: css("--ink-3") },
     ];
+    $("kpis").style.setProperty("--kpi-n", cards.length);
     $("kpis").innerHTML = cards.map((c) => `<div class="card kpi ${c.hero ? "hero" : ""}">
       <div class="lbl">${c.dot ? `<i style="background:var(${c.dot})"></i>` : ""}${c.lbl}</div>
       <div class="val">${c.val}</div>${c.d}<div class="spark">${sparkSvg(c.spark, c.color)}</div></div>`).join("");
@@ -772,7 +828,7 @@ tbody tr:hover td { background: var(--surface-2); }
     const today = dayKey(nowMs()); const keys = [];
     for (let i = 29; i >= 0; i--) keys.push(new Date(new Date(today + "T00:00:00Z").getTime() - i * 86400000).toISOString().slice(0, 10));
     const by = {};
-    for (const r of dayRows) { const o = (by[dayKey(r.at)] ||= { pc: 0, food: 0, topup: 0, ticket: 0, other: 0, expense: 0 }); o[catOf(r)] += +r.amount; }
+    for (const r of dayRows) { const o = (by[dayKey(r.at)] ||= Object.fromEntries([...CATS.map((c) => [c.key, 0]), ["expense", 0]])); o[catOf(r)] += +r.amount; }
     return { keys, by };
   }
   function renderDaily() {
@@ -823,12 +879,12 @@ tbody tr:hover td { background: var(--surface-2); }
   }
 
   function renderFeed(hl) {
-    const rows = [...cash].sort((a, b) => b.id - a.id).slice(0, 40);
+    const rows = [...cash].sort((a, b) => new Date(b.at) - new Date(a.at)).slice(0, 40);
     $("feed").innerHTML = rows.map((r) => { const k = catOf(r);
       return `<tr class="${r.id === hl ? "new" : ""}"><td class="mono muted" style="width:52px">${hhmm(r.at)}</td>
-      <td><span class="tag ${r.is_expense ? "exp" : ""}">${r.is_expense ? "" : `<i style="background:${catColor(k)}"></i>`}${esc(r.is_expense ? (KIND[r.kind] === "Refund" ? "Refund" : "Expense") : (KIND[r.kind] || "Type " + r.kind))}</span>
+      <td><span class="tag ${r.is_expense ? "exp" : ""}">${r.is_expense ? "" : `<i style="background:${catColor(k)}"></i>`}${esc(r.is_expense ? (KIND[r.kind] === "Refund" ? "Refund" : r.kind === "posexp" ? "POS expense" : "Expense") : (KIND[r.kind] || "Type " + r.kind))}</span>
         <div class="note">${esc((r.note || "").replace(/^Money deposited to member account\.\s*/, "Top-up "))}${r.admin_name ? " · " + esc(r.admin_name) : ""}</div></td>
-      <td class="r num">${r.is_expense ? "−" : ""}${money(r.amount, 2)}</td></tr>`; }).join("")
+      <td class="r num">${r.is_expense || r.amount < 0 ? "−" : ""}${money(Math.abs(r.amount), 2)}</td></tr>`; }).join("")
       || '<tr><td class="empty">No transactions in this period yet.</td></tr>';
   }
 
@@ -893,9 +949,44 @@ tbody tr:hover td { background: var(--surface-2); }
       <td class="r num">${o.n}</td><td class="r num">${o.exp ? "−" : ""}${money(o.a, 2)}</td>
       <td>${o.exp ? "" : `<div class="share"><div class="b"><i style="width:${o.a / inc * 100}%;background:${catColor(o.cat)}"></i></div><span class="muted">${(o.a / inc * 100).toFixed(0)}%</span></div>`}</td></tr>`).join("")
       || '<tr><td colspan="4" class="empty">Nothing recorded in this period.</td></tr>';
-    const ex = cash.filter((r) => r.is_expense).sort((a, b) => b.id - a.id);
+    const ex = cash.filter((r) => r.is_expense).sort((a, b) => new Date(b.at) - new Date(a.at));
     $("expTable").innerHTML = ex.map((r) => `<tr><td class="mono muted">${p.days > 1 ? fmtDay(dayKey(r.at)) + " " : ""}${hhmm(r.at)}</td><td>${esc(r.note || (KIND[r.kind] || ""))}</td><td class="muted">${esc(r.admin_name)}</td><td class="r num">−${money(r.amount, 2)}</td></tr>`).join("")
       || '<tr><td colspan="4" class="empty">No expenses in this period.</td></tr>';
+  }
+
+  // ---------- POS ----------
+  function renderPos() {
+    const p = period(), lbl = p.label.toLowerCase();
+    const done = posSales.filter(posCounts);
+    const total = done.reduce((a, s) => a + +s.total, 0), qty = posItems.reduce((a, i) => a + +i.qty, 0);
+    const pending = posSales.filter((s) => s.status !== "Completed").length, credit = posSales.filter((s) => s.status === "Completed" && s.credit_paid === false);
+    $("posKpis").innerHTML = [
+      ["POS sales", money(total), `${done.length} receipts`],
+      ["Average receipt", money(done.length ? total / done.length : 0), lbl],
+      ["Items sold", qty.toLocaleString(), lbl],
+      ["Unpaid credit", money(credit.reduce((a, s) => a + +s.total, 0)), `${credit.length} receipts · ${pending} still open`],
+    ].map(([l, v, s2]) => `<div class="card kpi"><div class="lbl">${l}</div><div class="val">${v}</div><span class="delta flat"><small>${esc(s2)}</small></span></div>`).join("");
+    $("posTopSub").textContent = $("posPaySub").textContent = $("posCatSub").textContent = lbl;
+    const by = {}; for (const i of posItems) { const o = (by[i.product || "Unknown"] ||= { qty: 0, total: 0 }); o.qty += +i.qty; o.total += +i.total; }
+    const top = Object.entries(by).sort((a, b) => b[1].total - a[1].total).slice(0, 10);
+    chart("posTopChart", { type: "bar", data: { labels: top.map((x) => x[0]), datasets: [barDS("Sales", top.map((x) => x[1].total), css("--s5"), { borderWidth: 0, borderSkipped: "start" })] },
+      options: baseOpts({ indexAxis: "y", plugins: { legend: { display: false }, tooltip: { ...baseOpts().plugins.tooltip, callbacks: { label: (c) => ` ${money(c.parsed.x)} · ${top[c.dataIndex][1].qty} sold` } } },
+        scales: { x: { ...baseOpts().scales.y, stacked: false }, y: { ...baseOpts().scales.x, stacked: false, ticks: { ...baseOpts().scales.x.ticks, font: { family: "IBM Plex Sans", size: 11 } } } } }) });
+    const share = (rows, key, val, color) => {
+      const g = {}; for (const r of rows) { const k = r[key] || "—"; const o = (g[k] ||= { n: 0, a: 0 }); o.n += key === "category" ? +r.qty : 1; o.a += +r[val]; }
+      const sum = Object.values(g).reduce((a, o) => a + o.a, 0) || 1;
+      return Object.entries(g).sort((a, b) => b[1].a - a[1].a).map(([k, o]) => `<tr><td>${esc(k)}</td><td class="r num">${o.n.toLocaleString()}</td><td class="r num">${money(o.a, 2)}</td>
+        <td><div class="share"><div class="b"><i style="width:${o.a / sum * 100}%;background:var(${color})"></i></div><span class="muted">${(o.a / sum * 100).toFixed(0)}%</span></div></td></tr>`).join("")
+        || '<tr><td colspan="4" class="empty">No POS sales in this period.</td></tr>';
+    };
+    $("posPayTable").innerHTML = share(done, "payment_type", "total", "--s5");
+    $("posCatTable").innerHTML = share(posItems, "category", "total", "--s5");
+    const names = {}; for (const i of posAllItems) (names[i.sale_id] ||= []).push(`${+i.qty > 1 ? +i.qty + "× " : ""}${i.product || "?"}`);
+    $("posReceipts").innerHTML = [...posSales].sort((a, b) => new Date(b.at) - new Date(a.at)).slice(0, 100).map((s) => `<tr>
+      <td class="mono muted">${p.days > 1 ? fmtDay(dayKey(s.at)) + " " : ""}${hhmm(s.at)}</td>
+      <td>${esc((names[s.id] || []).join(", ") || s.items + " items")}${s.status !== "Completed" ? ' <span class="tag exp">Open</span>' : s.credit_paid === false ? ' <span class="tag exp">Unpaid</span>' : ""}</td>
+      <td class="muted" style="white-space:nowrap">${esc(s.cashier || "")}</td><td class="muted">${esc(s.payment_type || "")}</td><td class="r num">${money(s.total, 2)}</td></tr>`).join("")
+      || '<tr><td colspan="5" class="empty">No POS sales in this period.</td></tr>';
   }
 
   // ---------- PRODUCTS ----------
@@ -925,9 +1016,9 @@ tbody tr:hover td { background: var(--surface-2); }
     $("staffLegend").innerHTML = legendHtml(CATS.map((c) => [c.label, css(c.v)]));
     chart("staffChart", { type: "bar", data: { labels: rows.map((x) => x[0]), datasets: CATS.map((c) => barDS(c.label, rows.map((x) => x[1][c.key]), css(c.v), { borderWidth: 0, borderSkipped: "start", maxBarThickness: 28 })) },
       options: baseOpts({ indexAxis: "y", scales: { x: { ...baseOpts().scales.y }, y: { ...baseOpts().scales.x, ticks: { ...baseOpts().scales.x.ticks, font: { family: "IBM Plex Sans", size: 12 } } } } }) });
-    $("staffTable").innerHTML = rows.map(([n, o]) => `<tr><td><b>${esc(n)}</b></td><td class="r num">${money(o.pc)}</td><td class="r num">${money(o.food)}</td><td class="r num">${money(o.topup)}</td>
+    $("staffTable").innerHTML = rows.map(([n, o]) => `<tr><td><b>${esc(n)}</b></td><td class="r num">${money(o.pc)}</td><td class="r num">${money(o.food)}</td><td class="r num">${money(o.topup)}</td><td class="r num">${money(o.pos)}</td>
       <td class="r num">${money(o.ticket + o.other)}</td><td class="r num">${money(o.expense)}</td><td class="r num"><b>${money(o.net)}</b></td></tr>`).join("")
-      || '<tr><td colspan="7" class="empty">No activity in this period.</td></tr>';
+      || '<tr><td colspan="8" class="empty">No activity in this period.</td></tr>';
     const sh = {}; for (const r of cash) { const k = dayKey(r.at) + "|" + (r.admin_name || "—"); const o = (sh[k] ||= { a: r.at, b: r.at, rows: [] }); if (r.at < o.a) o.a = r.at; if (r.at > o.b) o.b = r.at; o.rows.push(r); }
     $("shiftTable").innerHTML = Object.entries(sh).sort((a, b) => (b[1].b > a[1].b ? 1 : -1)).map(([k, o]) => { const [d, n] = k.split("|");
       return `<tr><td>${fmtDay(d, { weekday: "short", month: "short", day: "numeric" })}</td><td>${esc(n)}</td><td class="r mono">${hhmm(o.a)}</td><td class="r mono">${hhmm(o.b)}</td><td class="r num">${money(sums(o.rows).net)}</td></tr>`; }).join("")
@@ -966,7 +1057,7 @@ tbody tr:hover td { background: var(--surface-2); }
   }
 
   // ---------- views ----------
-  const TITLES = { overview: "Overview", pcs: "PCs", sales: "Sales", products: "Food & drinks", staff: "Staff", members: "Members" };
+  const TITLES = { overview: "Overview", pcs: "PCs", sales: "Sales", products: "Food & drinks", pos: "POS", staff: "Staff", members: "Members" };
   function renderView() {
     const p = period();
     $("viewTitle").firstChild.textContent = TITLES[view];
@@ -977,6 +1068,7 @@ tbody tr:hover td { background: var(--surface-2); }
     if (view === "pcs") { renderFloor(); renderPcCharts(); }
     if (view === "sales") renderSales();
     if (view === "products") renderProducts();
+    if (view === "pos") renderPos();
     if (view === "staff") renderStaff();
     if (view === "members") renderMembers();
     renderAgent();
@@ -990,6 +1082,7 @@ tbody tr:hover td { background: var(--surface-2); }
   }
 
   // ---------- realtime ----------
+  let posTimer = 0;
   function subscribe() {
     if (demo) return;
     sb.channel("pancafe")
@@ -1005,6 +1098,9 @@ tbody tr:hover td { background: var(--surface-2); }
         const i = cash.findIndex((r) => r.id === e.new.id); if (i >= 0) cash[i] = e.new; else cash.push(e.new);
         if (view === "overview") { renderKpis(); renderHourly(); renderMix(); renderFeed(e.new.id); }
         else if (view === "sales" || view === "staff") renderView();
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "pancafe_pos_sales" }, () => {
+        clearTimeout(posTimer); posTimer = setTimeout(() => refresh(false), 3000); // items arrive right after the sale
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "pancafe_sessions" }, (e) => {
         if (e.eventType === "DELETE" || !inWin(e.new.end_at, period().start, period().end)) return;
