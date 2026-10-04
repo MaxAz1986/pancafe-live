@@ -4,223 +4,451 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Pancafe Live</title>
+<meta name="theme-color" content="#0e1a17">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Figtree:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="vendor/chart.umd.js"></script>
 <script src="config.js"></script>
 <style>
-/* Layout: a cashier's console. Sticky status bar, money strip, PC floor, then the ledger and charts in two columns. */
+/* Layout: an operations console. Dark rail of sections on the left (tabs on phones),
+   a sticky header carrying the period and live status, and a 12-column card grid. */
 :root {
-  --bg: #f5f6f4; --surface: #ffffff; --surface-2: #eef0ec; --line: #dfe2dc;
-  --ink: #111512; --ink-2: #4d544e; --ink-3: #7b827c;
-  --accent: #0f6b4f; --accent-ink: #ffffff;
-  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; --s-other: #9aa19b;
-  --good: #0a7d32; --good-bg: #dff3e5; --warn: #9a6200; --warn-bg: #fdf0d4; --bad: #b42318; --bad-bg: #fde4e1;
-  --idle-bg: #eef0ec;
-  --f-display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
-  --f-body: "Figtree", "Segoe UI", system-ui, sans-serif;
-  --f-mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
-  --r: 10px;
+  --bg: #f3f5f4; --surface: #ffffff; --surface-2: #eef1ef; --line: #e1e6e3; --line-2: #cfd6d2;
+  --ink: #101614; --ink-2: #47524d; --ink-3: #75807a;
+  --rail: #0e1a17; --rail-ink: #b8c6c0; --rail-active: #1d322c; --rail-accent: #4fd1a5;
+  --accent: #0d7a5f; --accent-soft: #dcf1e9; --accent-ink: #ffffff;
+  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; --s5: #8a63d2; --s-other: #a3aca7;
+  --seq-0: #eef1ef; --seq-1: #cde2fb; --seq-2: #9ec5f4; --seq-3: #5598e7; --seq-4: #256abf; --seq-5: #104281;
+  --good: #0a7d32; --good-bg: #dff3e5; --warn: #9a6200; --warn-bg: #fdf0d4; --bad: #c0352b; --bad-bg: #fde4e1;
+  --shadow: 0 1px 2px rgb(16 22 20 / .06), 0 1px 1px rgb(16 22 20 / .04);
+  --f-body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --f-num: "IBM Plex Sans Condensed", "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+  --r: 12px;
 }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
-  --bg: #121513; --surface: #1a1e1b; --surface-2: #232824; --line: #2f3530;
-  --ink: #f1f4f1; --ink-2: #b9c1ba; --ink-3: #8a938c;
-  --accent: #3fbf8f; --accent-ink: #0b1510;
-  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s-other: #6c746d;
+  --bg: #0c1110; --surface: #141b19; --surface-2: #1b2421; --line: #24302c; --line-2: #33413c;
+  --ink: #eef3f1; --ink-2: #b4c0bb; --ink-3: #85928c;
+  --rail: #080d0c; --rail-ink: #9fb0a9; --rail-active: #16241f; --rail-accent: #4fd1a5;
+  --accent: #3cc795; --accent-soft: #143329; --accent-ink: #062016;
+  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #9d85e9; --s-other: #6c776f;
+  --seq-0: #1b2421; --seq-1: #173b66; --seq-2: #184f95; --seq-3: #2a78d6; --seq-4: #5598e7; --seq-5: #9ec5f4;
   --good: #5fd38a; --good-bg: #173322; --warn: #f0b54a; --warn-bg: #3a2c10; --bad: #ff8a7a; --bad-bg: #3d1915;
-  --idle-bg: #202521; color-scheme: dark; } }
+  --shadow: none; color-scheme: dark; } }
 :root[data-theme="dark"] {
-  --bg: #121513; --surface: #1a1e1b; --surface-2: #232824; --line: #2f3530;
-  --ink: #f1f4f1; --ink-2: #b9c1ba; --ink-3: #8a938c;
-  --accent: #3fbf8f; --accent-ink: #0b1510;
-  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s-other: #6c746d;
+  --bg: #0c1110; --surface: #141b19; --surface-2: #1b2421; --line: #24302c; --line-2: #33413c;
+  --ink: #eef3f1; --ink-2: #b4c0bb; --ink-3: #85928c;
+  --rail: #080d0c; --rail-ink: #9fb0a9; --rail-active: #16241f; --rail-accent: #4fd1a5;
+  --accent: #3cc795; --accent-soft: #143329; --accent-ink: #062016;
+  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #9d85e9; --s-other: #6c776f;
+  --seq-0: #1b2421; --seq-1: #173b66; --seq-2: #184f95; --seq-3: #2a78d6; --seq-4: #5598e7; --seq-5: #9ec5f4;
   --good: #5fd38a; --good-bg: #173322; --warn: #f0b54a; --warn-bg: #3a2c10; --bad: #ff8a7a; --bad-bg: #3d1915;
-  --idle-bg: #202521; color-scheme: dark; }
+  --shadow: none; color-scheme: dark; }
 
 * { box-sizing: border-box; }
-html, body { margin: 0; }
-body { background: var(--bg); color: var(--ink); font: 15px/1.45 var(--f-body); -webkit-font-smoothing: antialiased; }
-.wrap { max-width: 1280px; margin: 0 auto; padding-inline: 16px; padding-block: 0 48px; }
-h1, h2 { font-family: var(--f-display); font-weight: 700; margin: 0; text-wrap: balance; }
-h2 { font-size: 17px; letter-spacing: -0.01em; }
-.num { font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
-.muted { color: var(--ink-3); }
+html, body { margin: 0; height: 100%; }
+body { background: var(--bg); color: var(--ink); font: 14px/1.45 var(--f-body); -webkit-font-smoothing: antialiased; }
 button, select, input { font: inherit; color: inherit; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.num { font-family: var(--f-num); font-variant-numeric: tabular-nums; }
+.mono { font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
+.muted { color: var(--ink-3); }
+[hidden] { display: none !important; }
 
-/* top bar */
-.bar { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--bg); border-bottom: 1px solid var(--line); }
-.bar .wrap { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; padding-block: 12px; }
-.brand { display: flex; align-items: baseline; gap: 8px; margin-right: auto; }
-.brand h1 { font-size: 22px; letter-spacing: -0.02em; }
-.brand .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); align-self: center; }
-.pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; font-size: 13px; font-weight: 600; background: var(--surface-2); color: var(--ink-2); white-space: nowrap; }
-.pill::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+/* ---------- shell ---------- */
+.shell { display: grid; grid-template-columns: 220px 1fr; min-height: 100%; }
+.rail { background: var(--rail); color: var(--rail-ink); padding: 20px 12px; position: sticky; top: 0; height: 100vh; display: flex; flex-direction: column; gap: 4px; }
+.logo { display: flex; align-items: center; gap: 10px; padding: 0 10px 18px; color: #fff; }
+.logo svg { flex: none; }
+.logo b { font: 700 17px/1 var(--f-body); letter-spacing: -0.01em; }
+.logo small { display: block; font: 500 11px/1.3 var(--f-mono); color: var(--rail-ink); letter-spacing: .04em; margin-top: 3px; }
+.nav { display: flex; flex-direction: column; gap: 2px; }
+.nav button { display: flex; align-items: center; gap: 10px; width: 100%; border: 0; background: transparent; color: var(--rail-ink); padding: 9px 10px; border-radius: 8px; cursor: pointer; font-weight: 500; text-align: left; }
+.nav button svg { width: 18px; height: 18px; flex: none; opacity: .8; }
+.nav button:hover { background: var(--rail-active); color: #fff; }
+.nav button[aria-current="page"] { background: var(--rail-active); color: #fff; box-shadow: inset 3px 0 0 var(--rail-accent); }
+.rail-foot { margin-top: auto; padding: 10px; font-size: 12px; display: grid; gap: 8px; }
+.rail-foot button { border: 1px solid #2a3b35; background: transparent; color: var(--rail-ink); border-radius: 8px; padding: 7px 10px; cursor: pointer; }
+.rail-foot button:hover { color: #fff; border-color: #3d544c; }
+
+.main { min-width: 0; }
+.top { position: sticky; top: 0; z-index: 10; background: color-mix(in srgb, var(--bg) 92%, transparent); backdrop-filter: blur(8px); border-bottom: 1px solid var(--line); }
+.top-in { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; padding-inline: 24px; padding-block: 14px; }
+.top h1 { font: 700 20px/1.2 var(--f-body); letter-spacing: -0.01em; margin: 0; margin-right: auto; }
+.top h1 span { display: block; font: 500 12px/1.3 var(--f-body); color: var(--ink-3); letter-spacing: 0; margin-top: 2px; }
+.seg { display: inline-flex; background: var(--surface-2); border: 1px solid var(--line); border-radius: 9px; padding: 3px; gap: 2px; flex-wrap: wrap; }
+.seg button { border: 0; background: transparent; padding: 5px 11px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; color: var(--ink-2); }
+.seg button[aria-pressed="true"] { background: var(--surface); color: var(--ink); box-shadow: 0 1px 2px rgb(0 0 0 / .12); }
+.custom { display: inline-flex; gap: 6px; align-items: center; font-size: 13px; }
+.custom input { border: 1px solid var(--line-2); background: var(--surface); border-radius: 7px; padding: 4px 6px; }
+.pill { display: inline-flex; align-items: center; gap: 7px; padding: 5px 11px; border-radius: 999px; font-size: 12px; font-weight: 600; background: var(--surface-2); color: var(--ink-2); white-space: nowrap; }
+.pill i { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
 .pill.good { background: var(--good-bg); color: var(--good); }
+.pill.good i { animation: pulse 2s ease-in-out infinite; }
 .pill.warn { background: var(--warn-bg); color: var(--warn); }
 .pill.bad { background: var(--bad-bg); color: var(--bad); }
-.seg { display: inline-flex; background: var(--surface-2); border-radius: 8px; padding: 3px; gap: 2px; flex-wrap: wrap; }
-.seg button { border: 0; background: transparent; padding: 5px 10px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; color: var(--ink-2); }
-.seg button[aria-pressed="true"] { background: var(--surface); color: var(--ink); box-shadow: 0 1px 2px rgb(0 0 0 / .12); }
-.linkbtn { border: 0; background: none; color: var(--ink-3); cursor: pointer; font-size: 13px; text-decoration: underline; }
+@keyframes pulse { 50% { opacity: .35; } }
 
-/* money strip */
-.money { display: grid; grid-template-columns: 1.4fr repeat(5, 1fr); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; margin-top: 20px; }
-.money > div { background: var(--surface); padding: 14px 16px; min-width: 0; }
-.money .lbl { font-size: 12px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-3); display: flex; align-items: center; gap: 6px; }
-.money .lbl i { width: 8px; height: 8px; border-radius: 2px; display: inline-block; }
-.money .val { font-family: var(--f-mono); font-size: 22px; font-weight: 600; margin-top: 4px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
-.money .net .val { font-family: var(--f-display); font-size: 34px; letter-spacing: -0.02em; }
-.money .sub { font-size: 12px; color: var(--ink-3); margin-top: 2px; }
-@media (max-width: 900px) { .money { grid-template-columns: repeat(3, 1fr); } .money .net { grid-column: 1 / -1; } }
-@media (max-width: 480px) { .money { grid-template-columns: repeat(2, 1fr); } }
-
-/* sections */
-.sec { margin-top: 28px; }
-.sec-h { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; margin-bottom: 12px; }
-.sec-h .muted { font-size: 13px; }
-.panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 16px; min-width: 0; }
-.cols { display: grid; grid-template-columns: 1.5fr 1fr; gap: 16px; }
-@media (max-width: 900px) { .cols { grid-template-columns: 1fr; } }
-
-/* PC floor */
-.floor { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 8px; }
-.pc { border-radius: 8px; padding: 10px; background: var(--idle-bg); border: 1px solid transparent; min-height: 92px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.pc .nm { font-family: var(--f-display); font-weight: 700; font-size: 16px; display: flex; justify-content: space-between; gap: 6px; }
-.pc .st { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-3); }
-.pc .tm { font-family: var(--f-mono); font-size: 15px; font-variant-numeric: tabular-nums; margin-top: auto; }
-.pc .ex { font-size: 12px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.pc.on { background: var(--surface); border-color: var(--accent); box-shadow: inset 4px 0 0 var(--accent); }
-.pc.on .st { color: var(--accent); }
-@media (max-width: 480px) { .floor { grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 6px; } .pc { min-height: 0; padding: 8px; } .pc .ex { display: none; } .bar { position: static; } }
-.pc.low { border-color: var(--warn); box-shadow: inset 4px 0 0 var(--warn); }
-.pc.low .st { color: var(--warn); }
-.pc.paused .st { color: var(--warn); }
-.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 13px; color: var(--ink-2); }
+.content { padding-inline: 24px; padding-block: 20px 48px; max-width: 1480px; }
+.grid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 16px; }
+.c3 { grid-column: span 3; } .c4 { grid-column: span 4; } .c5 { grid-column: span 5; } .c6 { grid-column: span 6; }
+.c7 { grid-column: span 7; } .c8 { grid-column: span 8; } .c12 { grid-column: span 12; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); box-shadow: var(--shadow); padding: 16px 18px; min-width: 0; }
+.card-h { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin-bottom: 12px; }
+.card-h h2 { font: 600 15px/1.3 var(--f-body); margin: 0; }
+.card-h .sub { font-size: 12px; color: var(--ink-3); }
+.card-h .right { margin-left: auto; font-size: 12px; color: var(--ink-3); }
+.chart-box { position: relative; height: 260px; }
+.chart-box.tall { height: 320px; }
+.chart-box.short { height: 200px; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--ink-2); margin-bottom: 8px; }
 .legend span { display: inline-flex; align-items: center; gap: 6px; }
 .legend i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
 
-/* charts */
-.chart { position: relative; }
-.chart svg { display: block; width: 100%; height: auto; overflow: visible; }
-.chart text { fill: var(--ink-3); font: 11px var(--f-mono); }
-.chart .grid { stroke: var(--line); stroke-width: 1; }
-.tip { position: absolute; pointer-events: none; background: var(--ink); color: var(--bg); font-size: 12px; padding: 6px 8px; border-radius: 6px; white-space: nowrap; transform: translate(-50%, -110%); z-index: 3; }
-.tip b { font-family: var(--f-mono); font-weight: 600; }
+/* KPI cards */
+.kpis { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 16px; }
+.kpi { padding: 14px 16px 10px; display: flex; flex-direction: column; gap: 2px; }
+.kpi .lbl { font-size: 12px; font-weight: 600; color: var(--ink-3); display: flex; align-items: center; gap: 7px; }
+.kpi .lbl i { width: 9px; height: 9px; border-radius: 3px; }
+.kpi .val { font: 600 28px/1.15 var(--f-num); letter-spacing: -0.01em; font-variant-numeric: tabular-nums; margin-top: 4px; }
+.kpi.hero { background: var(--rail); border-color: var(--rail); color: #fff; }
+.kpi.hero .lbl { color: var(--rail-ink); }
+.kpi.hero .delta.flat { color: var(--rail-ink); }
+.delta { font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 4px; }
+.delta.up { color: var(--good); } .delta.down { color: var(--bad); } .delta.flat { color: var(--ink-3); }
+.kpi.hero .delta.up { color: #6be3a9; } .kpi.hero .delta.down { color: #ff9b8f; }
+.delta small { font-weight: 500; color: var(--ink-3); }
+.kpi.hero .delta small { color: var(--rail-ink); }
+.spark { height: 34px; margin-top: 6px; }
+.spark svg { width: 100%; height: 100%; display: block; overflow: visible; }
+
+/* occupancy */
+.occ { display: grid; grid-template-columns: 150px 1fr; gap: 16px; align-items: center; }
+.occ .ring { position: relative; height: 150px; }
+.occ .ring .mid { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; pointer-events: none; }
+.occ .ring .mid b { font: 700 30px/1 var(--f-num); }
+.occ .ring .mid span { font-size: 11px; color: var(--ink-3); margin-top: 4px; }
+.occ dl { margin: 0; display: grid; gap: 8px; }
+.occ dl div { display: flex; justify-content: space-between; gap: 8px; border-bottom: 1px dashed var(--line); padding-bottom: 6px; }
+.occ dt { color: var(--ink-2); display: flex; align-items: center; gap: 7px; }
+.occ dt i { width: 9px; height: 9px; border-radius: 3px; }
+.occ dd { margin: 0; font: 600 15px var(--f-num); }
+
+/* heatmap */
+.heat { display: grid; grid-template-columns: 34px repeat(24, minmax(0, 1fr)); gap: 3px; font-size: 10px; color: var(--ink-3); }
+.heat .c { aspect-ratio: 1.15; border-radius: 3px; background: var(--seq-0); min-width: 0; }
+.heat .h { text-align: center; font-family: var(--f-mono); }
+.heat .d { align-self: center; font-weight: 600; }
+.heat-scale { display: flex; align-items: center; gap: 4px; font-size: 11px; color: var(--ink-3); margin-top: 10px; }
+.heat-scale i { width: 18px; height: 10px; border-radius: 2px; }
+
+/* PC floor */
+.floor { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 10px; }
+.pc { border-radius: 10px; padding: 10px 12px; background: var(--surface-2); border: 1px solid var(--line); display: flex; flex-direction: column; gap: 3px; min-width: 0; min-height: 104px; }
+.pc .nm { display: flex; justify-content: space-between; align-items: center; font: 700 15px var(--f-body); }
+.pc .chip { font-size: 10px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; padding: 2px 6px; border-radius: 4px; background: var(--line); color: var(--ink-3); }
+.pc .tm { font: 600 19px/1.1 var(--f-num); margin-top: auto; font-variant-numeric: tabular-nums; }
+.pc .ex { font-size: 11px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pc .bar { height: 4px; border-radius: 2px; background: var(--line); overflow: hidden; margin-top: 4px; }
+.pc .bar b { display: block; height: 100%; background: var(--accent); border-radius: 2px; }
+.pc.on { background: var(--surface); border-color: var(--accent); }
+.pc.on .chip { background: var(--accent-soft); color: var(--accent); }
+.pc.low { border-color: var(--warn); }
+.pc.low .chip { background: var(--warn-bg); color: var(--warn); }
+.pc.low .bar b { background: var(--warn); }
+.pc.free .tm { color: var(--ink-3); font-size: 14px; font-weight: 500; font-family: var(--f-body); }
+.floor-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 12px; color: var(--ink-2); margin-top: 12px; }
+.floor-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.floor-legend i { width: 12px; height: 12px; border-radius: 3px; border: 1.5px solid; }
 
 /* tables */
 .tbl-wrap { overflow-x: auto; }
-table { width: 100%; border-collapse: collapse; font-size: 14px; }
-th { text-align: left; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-3); font-weight: 600; padding: 6px 8px; border-bottom: 1px solid var(--line); }
-td { padding: 7px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-3); font-weight: 600; padding: 7px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+td { padding: 8px; border-bottom: 1px solid var(--line); vertical-align: middle; }
 td.r, th.r { text-align: right; }
+td.num, td .num { font-family: var(--f-num); font-variant-numeric: tabular-nums; font-size: 14px; }
 tr:last-child td { border-bottom: 0; }
-.tag { display: inline-block; font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 4px; background: var(--surface-2); color: var(--ink-2); white-space: nowrap; }
+tbody tr:hover td { background: var(--surface-2); }
+.share { display: flex; align-items: center; gap: 8px; min-width: 120px; }
+.share .b { flex: 1; height: 6px; border-radius: 3px; background: var(--surface-2); overflow: hidden; }
+.share .b i { display: block; height: 100%; border-radius: 3px; }
+.tag { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: var(--surface-2); color: var(--ink-2); white-space: nowrap; }
+.tag i { width: 7px; height: 7px; border-radius: 50%; }
 .tag.exp { background: var(--bad-bg); color: var(--bad); }
+.feed { max-height: 380px; overflow-y: auto; }
 .feed td { font-size: 13px; }
-.feedbox { max-height: 420px; overflow-y: auto; }
-.new { animation: flash 2s ease-out; }
-@keyframes flash { from { background: var(--good-bg); } to { background: transparent; } }
-@media (prefers-reduced-motion: reduce) { .new { animation: none; } }
+.feed .note { font-size: 11px; color: var(--ink-3); }
+.new td { animation: flash 2.5s ease-out; }
+@keyframes flash { from { background: var(--accent-soft); } to { background: transparent; } }
+@media (prefers-reduced-motion: reduce) { .new td, .pill.good i { animation: none; } }
+.empty { color: var(--ink-3); font-size: 13px; padding: 14px 0; text-align: center; }
 
 /* login */
-.login { max-width: 380px; margin: 12vh auto 0; padding-inline: 16px; }
-.login h1 { font-size: 30px; letter-spacing: -0.02em; }
-.login p { color: var(--ink-2); }
-.login form { display: grid; gap: 10px; margin-top: 18px; }
-.login label { font-size: 13px; font-weight: 600; color: var(--ink-2); display: grid; gap: 4px; }
-.login input { padding: 10px 12px; border: 1px solid var(--line); background: var(--surface); border-radius: 8px; }
-.btn { padding: 10px 14px; border: 0; border-radius: 8px; background: var(--accent); color: var(--accent-ink); font-weight: 600; cursor: pointer; }
-.btn.ghost { background: var(--surface-2); color: var(--ink); }
-.msg { font-size: 14px; min-height: 1.4em; }
+.login-wrap { min-height: 100%; display: grid; grid-template-columns: 1.1fr 1fr; }
+.login-side { background: var(--rail); color: var(--rail-ink); padding: 48px; display: flex; flex-direction: column; justify-content: space-between; }
+.login-side h2 { color: #fff; font: 700 34px/1.15 var(--f-body); letter-spacing: -0.02em; margin: 0 0 12px; max-width: 14ch; }
+.login-side p { max-width: 42ch; margin: 0; }
+.login-side .mini { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; max-width: 320px; }
+.login-side .mini i { aspect-ratio: 1; border-radius: 5px; background: #1a2a25; }
+.login-side .mini i.on { background: var(--rail-accent); }
+.login { align-self: center; justify-self: center; width: min(380px, 100%); padding-inline: 20px; padding-block: 40px; }
+.login h1 { font: 700 26px/1.2 var(--f-body); margin: 0 0 6px; }
+.login p { color: var(--ink-2); margin: 0 0 20px; }
+.login form { display: grid; gap: 12px; }
+.login label { font-size: 13px; font-weight: 600; color: var(--ink-2); display: grid; gap: 5px; }
+.login input { padding: 11px 12px; border: 1px solid var(--line-2); background: var(--surface); border-radius: 9px; }
+.btn { padding: 11px 14px; border: 0; border-radius: 9px; background: var(--accent); color: var(--accent-ink); font-weight: 600; cursor: pointer; }
+.btn.ghost { background: var(--surface-2); color: var(--ink); border: 1px solid var(--line); }
+.msg { font-size: 13px; min-height: 1.4em; }
 .msg.err { color: var(--bad); }
-.empty { color: var(--ink-3); font-size: 14px; padding: 12px 0; }
+
+/* responsive */
+@media (max-width: 1200px) {
+  .kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .c3, .c4, .c5 { grid-column: span 6; } .c7, .c8 { grid-column: span 12; } .c6 { grid-column: span 6; }
+}
+@media (max-width: 1000px) {
+  .shell { grid-template-columns: 1fr; }
+  .rail { position: static; height: auto; flex-direction: row; align-items: center; padding: 10px 16px; gap: 10px; overflow-x: auto; }
+  .logo { padding: 0 8px 0 0; }
+  .logo small { display: none; }
+  .nav { flex-direction: row; }
+  .nav button { padding: 7px 10px; white-space: nowrap; }
+  .nav button svg { display: none; }
+  .nav button[aria-current="page"] { box-shadow: inset 0 -2px 0 var(--rail-accent); }
+  .rail-foot { margin: 0 0 0 auto; padding: 0; }
+  .rail-foot .who { display: none; }
+  .top-in, .content { padding-inline: 16px; }
+  .c3, .c4, .c5, .c6 { grid-column: span 12; }
+  .login-wrap { grid-template-columns: 1fr; }
+  .login-side { display: none; }
+}
+@media (max-width: 560px) {
+  .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .kpis .hero { grid-column: 1 / -1; }
+  .kpi .val { font-size: 23px; }
+  .grid { gap: 12px; }
+  .card { padding: 14px; }
+  .occ { grid-template-columns: 120px 1fr; }
+  .occ .ring { height: 120px; }
+  .floor { grid-template-columns: repeat(auto-fill, minmax(98px, 1fr)); gap: 6px; }
+  .pc { min-height: 84px; padding: 8px; }
+  .pc .ex { display: none; }
+  .heat { grid-template-columns: 28px repeat(24, minmax(0, 1fr)); gap: 2px; }
+  .heat .h:nth-child(odd) { visibility: hidden; }
+  .top { position: static; }
+}
 </style>
 </head>
 <body>
 
-<section id="login" class="login" hidden>
-  <h1>Pancafe Live</h1>
-  <p>Sign in to see your cafe's sales and PCs in real time.</p>
-  <form id="loginForm">
-    <label for="email">Email<input id="email" type="email" autocomplete="username" required></label>
-    <label for="password">Password (at least 8 characters)<input id="password" type="password" autocomplete="current-password" minlength="8" required></label>
-    <button class="btn" type="submit" id="signinBtn">Sign in</button>
-    <button class="btn ghost" type="button" id="signupBtn">Create account</button>
-    <div id="loginMsg" class="msg"></div>
-  </form>
-</section>
-
-<div id="app" hidden>
-  <header class="bar">
-    <div class="wrap">
-      <div class="brand"><span class="dot"></span><h1>Pancafe Live</h1></div>
-      <span id="syncPill" class="pill">Connecting</span>
-      <div class="seg" role="group" aria-label="Period" id="rangeSeg">
-        <button type="button" data-r="today" aria-pressed="true">Today</button>
-        <button type="button" data-r="yesterday" aria-pressed="false">Yesterday</button>
-        <button type="button" data-r="7d" aria-pressed="false">7 days</button>
-        <button type="button" data-r="month" aria-pressed="false">This month</button>
-        <button type="button" data-r="lastmonth" aria-pressed="false">Last month</button>
-      </div>
-      <button class="linkbtn" id="signoutBtn" type="button">Sign out</button>
+<!-- ============ sign in ============ -->
+<div id="login" class="login-wrap" hidden>
+  <aside class="login-side">
+    <div class="logo">
+      <svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true"><rect x="2" y="5" width="24" height="15" rx="3" fill="none" stroke="#4fd1a5" stroke-width="2"/><path d="M10 24h8M14 20v4" stroke="#4fd1a5" stroke-width="2" stroke-linecap="round"/></svg>
+      <div><b>Pancafe Live</b></div>
     </div>
-  </header>
+    <div>
+      <h2>Your cafe, from anywhere.</h2>
+      <p>Every PC session, snack and top-up from PanCafe, updated every few seconds.</p>
+    </div>
+    <div class="mini" aria-hidden="true"><i class="on"></i><i class="on"></i><i></i><i class="on"></i><i></i><i></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i class="on"></i><i></i></div>
+  </aside>
+  <section class="login">
+    <h1>Sign in</h1>
+    <p>Use the email your access was set up for.</p>
+    <form id="loginForm">
+      <label for="email">Email<input id="email" type="email" autocomplete="username" required></label>
+      <label for="password">Password<input id="password" type="password" autocomplete="current-password" required></label>
+      <button class="btn" type="submit">Sign in</button>
+      <div id="loginMsg" class="msg"></div>
+    </form>
+  </section>
+</div>
 
-  <main class="wrap">
-    <div class="money" id="money"></div>
+<!-- ============ app ============ -->
+<div id="app" class="shell" hidden>
+  <aside class="rail">
+    <div class="logo">
+      <svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true"><rect x="2" y="5" width="24" height="15" rx="3" fill="none" stroke="#4fd1a5" stroke-width="2"/><path d="M10 24h8M14 20v4" stroke="#4fd1a5" stroke-width="2" stroke-linecap="round"/></svg>
+      <div><b>Pancafe Live</b><small>PANCAFE PRO SERVER</small></div>
+    </div>
+    <nav class="nav" id="nav" aria-label="Sections">
+      <button type="button" data-v="overview" aria-current="page"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2.5" y="2.5" width="6" height="6" rx="1.5"/><rect x="11.5" y="2.5" width="6" height="6" rx="1.5"/><rect x="2.5" y="11.5" width="6" height="6" rx="1.5"/><rect x="11.5" y="11.5" width="6" height="6" rx="1.5"/></svg>Overview</button>
+      <button type="button" data-v="pcs"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2" y="3" width="16" height="10" rx="2"/><path d="M7 17h6M10 13v4"/></svg>PCs</button>
+      <button type="button" data-v="sales"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 16V9M8 16V4M13 16v-5M18 16V7"/></svg>Sales</button>
+      <button type="button" data-v="products"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 7h12l-1 10H5L4 7Z"/><path d="M7 7V5a3 3 0 0 1 6 0v2"/></svg>Food &amp; drinks</button>
+      <button type="button" data-v="staff"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="10" cy="7" r="3.5"/><path d="M3.5 17c1-3.5 3.6-5 6.5-5s5.5 1.5 6.5 5"/></svg>Staff</button>
+      <button type="button" data-v="members"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2.5" y="4" width="15" height="12" rx="2"/><circle cx="7.5" cy="9.5" r="2"/><path d="M11.5 8.5h3.5M11.5 11.5h3.5"/></svg>Members</button>
+    </nav>
+    <div class="rail-foot">
+      <div class="who" id="who"></div>
+      <button type="button" id="signoutBtn">Sign out</button>
+    </div>
+  </aside>
 
-    <section class="sec">
-      <div class="sec-h"><h2>PC floor</h2><span class="muted" id="floorSummary"></span></div>
-      <div class="panel">
-        <div class="floor" id="floor"></div>
-        <div class="legend" style="margin-top:12px">
-          <span><i style="background:var(--accent)"></i>In use</span>
-          <span><i style="background:var(--warn)"></i>Under 10 min left</span>
-          <span><i style="background:var(--idle-bg);border:1px solid var(--line)"></i>Free</span>
+  <div class="main">
+    <header class="top">
+      <div class="top-in">
+        <h1 id="viewTitle">Overview<span id="viewSub"></span></h1>
+        <span id="syncPill" class="pill"><i></i>Connecting</span>
+        <div class="seg" role="group" aria-label="Period" id="rangeSeg">
+          <button type="button" data-r="today" aria-pressed="true">Today</button>
+          <button type="button" data-r="yesterday" aria-pressed="false">Yesterday</button>
+          <button type="button" data-r="7d" aria-pressed="false">7 days</button>
+          <button type="button" data-r="30d" aria-pressed="false">30 days</button>
+          <button type="button" data-r="month" aria-pressed="false">This month</button>
+          <button type="button" data-r="custom" aria-pressed="false">Custom</button>
+        </div>
+        <div class="custom" id="customBox" hidden>
+          <input type="date" id="fromDate" aria-label="From"> to <input type="date" id="toDate" aria-label="To">
         </div>
       </div>
-    </section>
+    </header>
 
-    <section class="sec cols">
-      <div class="panel">
-        <div class="sec-h"><h2 id="hourTitle">Income by hour</h2><span class="muted" id="hourSub"></span></div>
-        <div class="legend" id="catLegend" style="margin-bottom:8px"></div>
-        <div class="chart" id="hourChart"></div>
-      </div>
-      <div class="panel">
-        <div class="sec-h"><h2>Live transactions</h2><span class="muted">newest first</span></div>
-        <div class="tbl-wrap feedbox"><table class="feed"><tbody id="feed"></tbody></table></div>
-      </div>
-    </section>
+    <div class="content">
+      <!-- OVERVIEW -->
+      <section data-view="overview">
+        <div class="kpis" id="kpis"></div>
+        <div class="grid" style="margin-top:16px">
+          <div class="card c4">
+            <div class="card-h"><h2>PCs right now</h2><span class="right" id="occAt"></span></div>
+            <div class="occ">
+              <div class="ring"><canvas id="occChart"></canvas><div class="mid"><b id="occPct">0%</b><span>in use</span></div></div>
+              <dl id="occList"></dl>
+            </div>
+          </div>
+          <div class="card c8">
+            <div class="card-h"><h2>Income by hour</h2><span class="sub" id="hourSub"></span><span class="right">bars: this period · line: previous period</span></div>
+            <div class="legend" id="hourLegend"></div>
+            <div class="chart-box"><canvas id="hourChart"></canvas></div>
+          </div>
+          <div class="card c8">
+            <div class="card-h"><h2>Daily income</h2><span class="sub">last 30 days</span><span class="right" id="dailyAvg"></span></div>
+            <div class="legend" id="dailyLegend"></div>
+            <div class="chart-box"><canvas id="dailyChart"></canvas></div>
+          </div>
+          <div class="card c4">
+            <div class="card-h"><h2>Where the money comes from</h2><span class="sub" id="mixSub"></span></div>
+            <div class="chart-box short"><canvas id="mixChart"></canvas></div>
+            <div class="tbl-wrap" style="margin-top:10px"><table><tbody id="mixTable"></tbody></table></div>
+          </div>
+          <div class="card c7">
+            <div class="card-h"><h2>Busiest times</h2><span class="sub">PC income by weekday and hour, last 4 weeks</span></div>
+            <div class="heat" id="heat"></div>
+            <div class="heat-scale" id="heatScale"></div>
+          </div>
+          <div class="card c5">
+            <div class="card-h"><h2>Live transactions</h2><span class="right">newest first</span></div>
+            <div class="tbl-wrap feed"><table><tbody id="feed"></tbody></table></div>
+          </div>
+        </div>
+      </section>
 
-    <section class="sec panel">
-      <div class="sec-h"><h2>Last 30 days</h2><span class="muted">daily income, expenses shown separately</span></div>
-      <div class="chart" id="dayChart"></div>
-    </section>
+      <!-- PCS -->
+      <section data-view="pcs" hidden>
+        <div class="card">
+          <div class="card-h"><h2>PC floor</h2><span class="sub" id="floorSummary"></span></div>
+          <div class="floor" id="floor"></div>
+          <div class="floor-legend">
+            <span><i style="border-color:var(--accent);background:var(--surface)"></i>In use</span>
+            <span><i style="border-color:var(--warn);background:var(--surface)"></i>10 minutes or less left</span>
+            <span><i style="border-color:var(--line);background:var(--surface-2)"></i>Free</span>
+          </div>
+        </div>
+        <div class="grid" style="margin-top:16px">
+          <div class="card c8">
+            <div class="card-h"><h2>Hours used per PC</h2><span class="sub" id="pcHoursSub"></span></div>
+            <div class="chart-box tall"><canvas id="pcHoursChart"></canvas></div>
+          </div>
+          <div class="card c4">
+            <div class="card-h"><h2>Session length</h2><span class="sub" id="lenSub"></span></div>
+            <div class="chart-box tall"><canvas id="lenChart"></canvas></div>
+          </div>
+          <div class="card c12">
+            <div class="card-h"><h2>PC ranking</h2><span class="sub" id="pcRankSub"></span></div>
+            <div class="tbl-wrap"><table><thead><tr><th>PC</th><th class="r">Sessions</th><th class="r">Hours</th><th class="r">Avg session</th><th class="r">Income</th><th>Share of PC income</th></tr></thead><tbody id="pcRank"></tbody></table></div>
+          </div>
+        </div>
+      </section>
 
-    <section class="sec cols">
-      <div class="panel">
-        <div class="sec-h"><h2>By staff</h2><span class="muted" id="staffSub"></span></div>
-        <div class="tbl-wrap"><table><thead><tr><th>Staff</th><th class="r">PC time</th><th class="r">Food</th><th class="r">Top-ups</th><th class="r">Expenses</th><th class="r">Net</th></tr></thead><tbody id="staff"></tbody></table></div>
-      </div>
-      <div class="panel">
-        <div class="sec-h"><h2>Top products</h2><span class="muted" id="prodSub"></span></div>
-        <div class="tbl-wrap"><table><thead><tr><th>Product</th><th class="r">Sold</th><th class="r">Amount</th></tr></thead><tbody id="products"></tbody></table></div>
-      </div>
-    </section>
+      <!-- SALES -->
+      <section data-view="sales" hidden>
+        <div class="grid">
+          <div class="card c12">
+            <div class="card-h"><h2>Income and expenses</h2><span class="sub" id="salesSub"></span></div>
+            <div class="legend" id="salesLegend"></div>
+            <div class="chart-box tall"><canvas id="salesChart"></canvas></div>
+          </div>
+          <div class="card c6">
+            <div class="card-h"><h2>By type</h2><span class="sub" id="typeSub"></span></div>
+            <div class="tbl-wrap"><table><thead><tr><th>Type</th><th class="r">Count</th><th class="r">Amount</th><th>Share</th></tr></thead><tbody id="typeTable"></tbody></table></div>
+          </div>
+          <div class="card c6">
+            <div class="card-h"><h2>Expenses and refunds</h2><span class="sub" id="expSub"></span></div>
+            <div class="tbl-wrap feed"><table><thead><tr><th>When</th><th>Note</th><th>Staff</th><th class="r">Amount</th></tr></thead><tbody id="expTable"></tbody></table></div>
+          </div>
+        </div>
+      </section>
 
-    <section class="sec cols">
-      <div class="panel">
-        <div class="sec-h"><h2>Busiest PCs</h2><span class="muted" id="pcSub"></span></div>
-        <div class="tbl-wrap"><table><thead><tr><th>PC</th><th class="r">Sessions</th><th class="r">Hours</th><th class="r">Income</th></tr></thead><tbody id="pcs"></tbody></table></div>
-      </div>
-      <div class="panel">
-        <div class="sec-h"><h2>Members</h2><span class="muted" id="memSub"></span></div>
-        <div class="tbl-wrap"><table><thead><tr><th>Member</th><th class="r">Balance</th><th class="r">Last visit</th></tr></thead><tbody id="members"></tbody></table></div>
-      </div>
-    </section>
-  </main>
+      <!-- PRODUCTS -->
+      <section data-view="products" hidden>
+        <div class="grid">
+          <div class="card c7">
+            <div class="card-h"><h2>Best sellers</h2><span class="sub" id="prodSub"></span></div>
+            <div class="chart-box tall"><canvas id="prodChart"></canvas></div>
+          </div>
+          <div class="card c5">
+            <div class="card-h"><h2>Sales by hour</h2><span class="sub" id="prodHourSub"></span></div>
+            <div class="chart-box tall"><canvas id="prodHourChart"></canvas></div>
+          </div>
+          <div class="card c12">
+            <div class="card-h"><h2>All products</h2><span class="sub">price and stock count as set in PanCafe</span></div>
+            <div class="tbl-wrap"><table><thead><tr><th>Product</th><th class="r">Price</th><th class="r">Sold</th><th class="r">Amount</th><th class="r">Stock</th></tr></thead><tbody id="prodTable"></tbody></table></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- STAFF -->
+      <section data-view="staff" hidden>
+        <div class="grid">
+          <div class="card c7">
+            <div class="card-h"><h2>Income taken by staff</h2><span class="sub" id="staffSub"></span></div>
+            <div class="legend" id="staffLegend"></div>
+            <div class="chart-box tall"><canvas id="staffChart"></canvas></div>
+          </div>
+          <div class="card c5">
+            <div class="card-h"><h2>Shifts</h2><span class="sub">first and last transaction per day</span></div>
+            <div class="tbl-wrap feed"><table><thead><tr><th>Day</th><th>Staff</th><th class="r">From</th><th class="r">To</th><th class="r">Net</th></tr></thead><tbody id="shiftTable"></tbody></table></div>
+          </div>
+          <div class="card c12">
+            <div class="tbl-wrap"><table><thead><tr><th>Staff</th><th class="r">PC time</th><th class="r">Food</th><th class="r">Top-ups</th><th class="r">Other</th><th class="r">Expenses</th><th class="r">Net</th></tr></thead><tbody id="staffTable"></tbody></table></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- MEMBERS -->
+      <section data-view="members" hidden>
+        <div class="kpis" id="memKpis" style="grid-template-columns:repeat(4,minmax(0,1fr))"></div>
+        <div class="grid" style="margin-top:16px">
+          <div class="card c7">
+            <div class="card-h"><h2>Member top-ups</h2><span class="sub">last 30 days</span></div>
+            <div class="chart-box"><canvas id="topupChart"></canvas></div>
+          </div>
+          <div class="card c5">
+            <div class="card-h"><h2>Largest balances</h2><span class="sub">prepaid money held for members</span></div>
+            <div class="chart-box"><canvas id="balChart"></canvas></div>
+          </div>
+          <div class="card c12">
+            <div class="tbl-wrap"><table><thead><tr><th>Member</th><th>Status</th><th class="r">Balance</th><th class="r">Bonus</th><th class="r">Total deposited</th><th class="r">Hours played</th><th class="r">Last visit</th></tr></thead><tbody id="memTable"></tbody></table></div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -230,20 +458,24 @@ tr:last-child td { border-bottom: 0; }
   const CUR = CFG.currency || "₱";
   const KIND = { 1: "PC time", 2: "Food & drinks", 3: "Manual entry", 4: "Member top-up", 6: "Refund", 8: "Ticket sale" };
   const CATS = [ // income categories, fixed color order
-    { key: "pc", label: "PC time", color: "var(--s1)", kinds: [1] },
-    { key: "food", label: "Food & drinks", color: "var(--s2)", kinds: [2] },
-    { key: "topup", label: "Top-ups", color: "var(--s3)", kinds: [4] },
-    { key: "ticket", label: "Tickets", color: "var(--s4)", kinds: [8] },
-    { key: "other", label: "Other", color: "var(--s-other)", kinds: null },
+    { key: "pc", label: "PC time", v: "--s1", kinds: [1] },
+    { key: "food", label: "Food & drinks", v: "--s2", kinds: [2] },
+    { key: "topup", label: "Member top-ups", v: "--s3", kinds: [4] },
+    { key: "ticket", label: "Tickets", v: "--s4", kinds: [8] },
+    { key: "other", label: "Other", v: "--s-other", kinds: null },
   ];
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
   const offMin = (() => { const m = TZ.match(/([+-])(\d\d):(\d\d)/); return (m[1] === "-" ? -1 : 1) * (+m[2] * 60 + +m[3]); })();
   const local = (d) => new Date(new Date(d).getTime() + offMin * 60000); // read with getUTC*
   const money = (v, dp = 0) => CUR + Number(v || 0).toLocaleString("en-PH", { minimumFractionDigits: dp, maximumFractionDigits: dp });
+  const short = (v) => Math.abs(v) >= 1000 ? CUR + (v / 1000).toFixed(v >= 10000 ? 0 : 1) + "k" : CUR + Math.round(v);
   const hhmm = (d) => { const l = local(d); return String(l.getUTCHours()).padStart(2, "0") + ":" + String(l.getUTCMinutes()).padStart(2, "0"); };
   const dayKey = (d) => local(d).toISOString().slice(0, 10);
+  const fmtDay = (k, o = { month: "short", day: "numeric" }) => new Date(k + "T00:00:00Z").toLocaleDateString("en-PH", { ...o, timeZone: "UTC" });
   const catOf = (row) => row.is_expense ? "expense" : (CATS.find((c) => c.kinds && c.kinds.includes(row.kind)) || CATS[4]).key;
+  const catColor = (k) => css((CATS.find((c) => c.key === k) || {}).v || "--bad");
 
   // ---------- data source: Supabase, or a local sample file for previews ----------
   const demo = location.hash === "#demo";
@@ -253,10 +485,11 @@ tr:last-child td { border-bottom: 0; }
     sb = window.supabase.createClient(CFG.supabaseUrl, CFG.supabaseKey);
   }
   let DEMO = null;
-  async function q(table, build) {
+  async function q(table, build, demoFilter) {
     if (demo) {
       DEMO = DEMO || await (await fetch("demo-data.json")).json();
-      return build ? build(DEMO[table] || []) : (DEMO[table] || []);
+      const rows = DEMO[table] || [];
+      return demoFilter ? demoFilter(rows) : rows;
     }
     const out = []; const page = 1000;
     for (let from = 0; ; from += page) {
@@ -266,205 +499,403 @@ tr:last-child td { border-bottom: 0; }
       if (data.length < page) return out;
     }
   }
-  const nowMs = () => demo && DEMO?.now ? new Date(DEMO.now).getTime() + (Date.now() - bootAt) : Date.now();
   const bootAt = Date.now();
+  const nowMs = () => demo && DEMO?.now ? new Date(DEMO.now).getTime() + (Date.now() - bootAt) : Date.now();
 
   // ---------- period ----------
-  let range = "today";
+  let range = "today", view = "overview";
+  const atLocal = (Y, M, D) => new Date(Date.UTC(Y, M, D) - offMin * 60000);
   function period() {
     const l = new Date(nowMs() + offMin * 60000);
     const y = l.getUTCFullYear(), m = l.getUTCMonth(), d = l.getUTCDate();
-    const at = (Y, M, D) => new Date(Date.UTC(Y, M, D) - offMin * 60000);
+    let p;
     switch (range) {
-      case "yesterday": return { start: at(y, m, d - 1), end: at(y, m, d), label: "yesterday", hourly: true };
-      case "7d": return { start: at(y, m, d - 6), end: at(y, m, d + 1), label: "last 7 days", hourly: true };
-      case "month": return { start: at(y, m, 1), end: at(y, m, d + 1), label: "this month", hourly: true };
-      case "lastmonth": return { start: at(y, m - 1, 1), end: at(y, m, 1), label: "last month", hourly: true };
-      default: return { start: at(y, m, d), end: at(y, m, d + 1), label: "today", hourly: true };
+      case "yesterday": p = { start: atLocal(y, m, d - 1), end: atLocal(y, m, d), label: "Yesterday" }; break;
+      case "7d": p = { start: atLocal(y, m, d - 6), end: atLocal(y, m, d + 1), label: "Last 7 days" }; break;
+      case "30d": p = { start: atLocal(y, m, d - 29), end: atLocal(y, m, d + 1), label: "Last 30 days" }; break;
+      case "month": p = { start: atLocal(y, m, 1), end: atLocal(y, m, d + 1), label: "This month" }; break;
+      case "custom": {
+        const f = $("fromDate").value, t = $("toDate").value || f;
+        if (f) { const [a, b, c] = f.split("-").map(Number), [e, g, h] = t.split("-").map(Number);
+          p = { start: atLocal(a, b - 1, c), end: atLocal(e, g - 1, h + 1), label: f === t ? fmtDay(f, { weekday: "short", month: "short", day: "numeric" }) : `${fmtDay(f)} – ${fmtDay(t)}` }; break; }
+      }
+      // falls through to today when no custom date picked
+      default: p = { start: atLocal(y, m, d), end: atLocal(y, m, d + 1), label: "Today" };
     }
+    // previous window of equal length, cut to the same elapsed time when the period is still running
+    const len = p.end - p.start, elapsed = Math.min(nowMs(), p.end.getTime()) - p.start.getTime();
+    p.prevStart = new Date(p.start.getTime() - len);
+    p.prevEnd = new Date(p.prevStart.getTime() + Math.max(0, elapsed));
+    p.days = Math.round(len / 86400000);
+    p.prevLabel = p.days === 1 ? (range === "today" ? "vs same time yesterday" : "vs day before") : `vs previous ${p.days} days`;
+    return p;
   }
-  const inPeriod = (t, p) => { const x = new Date(t).getTime(); return x >= p.start.getTime() && x < p.end.getTime(); };
+  const inWin = (t, a, b) => { const x = new Date(t).getTime(); return x >= a.getTime() && x < b.getTime(); };
 
   // ---------- state ----------
-  let cash = [], sessions = [], moves = [], terminals = [], members = [], daily = [], agent = null;
+  let cash = [], prevCash = [], sessions = [], moves = [], terminals = [], members = [], products = [], daily = [], heatRows = [], agent = null;
 
   async function loadPeriod() {
     const p = period();
-    const s = p.start.toISOString(), e = p.end.toISOString();
-    const f = (col) => demo ? (rows) => rows.filter((r) => inPeriod(r[col], p)) : (t) => t.select("*").gte(col, s).lt(col, e).order("id");
-    [cash, sessions, moves] = await Promise.all([q("pancafe_cash", f("at")), q("pancafe_sessions", f("end_at")), q("pancafe_stock_moves", f("at"))]);
+    const s = p.start.toISOString(), e = p.end.toISOString(), ps = p.prevStart.toISOString();
+    const win = (col, a, b) => (t) => t.select("*").gte(col, a).lt(col, b).order("id");
+    const dwin = (col, a, b) => (rows) => rows.filter((r) => inWin(r[col], new Date(a), new Date(b)));
+    let both;
+    [both, sessions, moves] = await Promise.all([
+      q("pancafe_cash", win("at", ps, e), dwin("at", ps, e)),
+      q("pancafe_sessions", win("end_at", s, e), dwin("end_at", s, e)),
+      q("pancafe_stock_moves", win("at", s, e), dwin("at", s, e)),
+    ]);
+    cash = both.filter((r) => inWin(r.at, p.start, p.end));
+    prevCash = both.filter((r) => inWin(r.at, p.prevStart, p.prevEnd));
   }
   async function loadStatic() {
-    const since = new Date(nowMs() - 31 * 86400000).toISOString().slice(0, 10);
-    const all = demo ? null : (t) => t.select("*");
-    [terminals, members, daily] = await Promise.all([
-      q("pancafe_terminals", all), q("pancafe_members", all),
-      q("pancafe_daily", demo ? (r) => r.filter((x) => x.day >= since) : (t) => t.select("*").gte("day", since).order("day")),
+    const since30 = new Date(nowMs() - 31 * 86400000).toISOString().slice(0, 10);
+    const since28 = new Date(nowMs() - 28 * 86400000).toISOString();
+    const all = (t) => t.select("*");
+    [terminals, members, products, daily, heatRows] = await Promise.all([
+      q("pancafe_terminals", all), q("pancafe_members", all), q("pancafe_products", all),
+      q("pancafe_daily", (t) => t.select("*").gte("day", since30).order("day"), (r) => r.filter((x) => x.day >= since30)),
+      q("pancafe_cash", (t) => t.select("id,at,amount,kind,is_expense").gte("at", since28).eq("kind", 1).eq("is_expense", false).order("id"),
+        (r) => r.filter((x) => x.at >= since28 && x.kind === 1 && !x.is_expense)),
     ]);
     const a = await q("pancafe_agent_status", all); agent = a[0] || null;
   }
 
-  // ---------- render: money strip ----------
+  // ---------- helpers ----------
   function sums(rows) {
-    const o = { pc: 0, food: 0, topup: 0, ticket: 0, other: 0, expense: 0 };
+    const o = { pc: 0, food: 0, topup: 0, ticket: 0, other: 0, expense: 0, n: rows.length };
     for (const r of rows) o[catOf(r)] += Number(r.amount);
     o.income = o.pc + o.food + o.topup + o.ticket + o.other;
     o.net = o.income - o.expense;
     return o;
   }
-  function renderMoney() {
-    const p = period(); const o = sums(cash);
-    const n = sessions.length;
-    $("money").innerHTML = `
-      <div class="net"><div class="lbl">Net ${esc(p.label)}</div><div class="val">${money(o.net, 2)}</div><div class="sub">${money(o.income)} in · ${money(o.expense)} out · ${n} sessions</div></div>
-      ${CATS.slice(0, 4).map((c) => `<div><div class="lbl"><i style="background:${c.color}"></i>${c.label}</div><div class="val">${money(o[c.key])}</div></div>`).join("")}
-      <div><div class="lbl"><i style="background:var(--bad)"></i>Expenses</div><div class="val">${money(o.expense)}</div><div class="sub">${o.other ? "Other income " + money(o.other) : ""}</div></div>`;
+  function delta(cur, prev, label) {
+    if (!prev) return `<span class="delta flat">— <small>${esc(label)}</small></span>`;
+    const pct = (cur - prev) / Math.abs(prev) * 100;
+    const cls = Math.abs(pct) < 0.5 ? "flat" : pct > 0 ? "up" : "down";
+    const arrow = cls === "up" ? "▲" : cls === "down" ? "▼" : "•";
+    return `<span class="delta ${cls}">${arrow} ${Math.abs(pct).toFixed(0)}% <small>${esc(label)}</small></span>`;
+  }
+  function sparkSvg(vals, color) {
+    if (!vals.length) return "";
+    const W = 200, H = 34, max = Math.max(...vals, 1), n = vals.length;
+    const x = (i) => n === 1 ? W / 2 : i * W / (n - 1), y = (v) => H - 2 - (v / max) * (H - 6);
+    const pts = vals.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
+    return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
+      <polygon points="0,${H} ${pts} ${W},${H}" fill="${color}" opacity=".14"/>
+      <polyline points="${pts}" fill="none" stroke="${color}" stroke-width="1.6" vector-effect="non-scaling-stroke" stroke-linejoin="round"/>
+      <circle cx="${x(n - 1)}" cy="${y(vals[n - 1])}" r="2.6" fill="${color}"/></svg>`;
+  }
+  // bucket rows into hours (single day) or days (multi-day) across the current period
+  function buckets(rows, field, valueOf) {
+    const p = period();
+    if (p.days <= 1) {
+      const b = new Array(24).fill(0);
+      for (const r of rows) b[local(r[field]).getUTCHours()] += valueOf(r);
+      return b;
+    }
+    const keys = [], idx = {};
+    for (let t = p.start.getTime(); t < p.end.getTime(); t += 86400000) { const k = dayKey(t); idx[k] = keys.length; keys.push(k); }
+    const b = new Array(keys.length).fill(0);
+    for (const r of rows) { const i = idx[dayKey(r[field])]; if (i !== undefined) b[i] += valueOf(r); }
+    return b;
   }
 
-  // ---------- render: PC floor ----------
-  const STATUS = { 1: null, 3: "Open time", 4: "Prepaid" };
-  function renderFloor() {
-    const now = nowMs();
-    const list = [...terminals].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
-    let used = 0;
-    $("floor").innerHTML = list.map((t) => {
-      const inUse = t.status !== 1 && t.status !== 0;
-      if (!inUse) return `<div class="pc"><div class="nm">${esc(t.name)}</div><div class="st">Free</div></div>`;
-      used++;
-      const mins = Math.max(0, Math.floor((now - new Date(t.start_at).getTime()) / 60000));
-      const left = t.timer_minute > 0 ? t.timer_minute - mins : null;
-      const low = left !== null && left <= 10;
-      const label = t.paused ? "Paused" : (STATUS[t.status] || "In use");
-      const time = left !== null ? `${Math.max(left, 0)}m left` : `${Math.floor(mins / 60)}h ${String(mins % 60).padStart(2, "0")}m`;
-      const extra = [t.prepaid_amount > 0 ? money(t.prepaid_amount) + " paid" : "", t.order_amount > 0 ? money(t.order_amount) + " food" : "", t.open_admin || ""].filter(Boolean).join(" · ");
-      return `<div class="pc on ${low ? "low" : ""} ${t.paused ? "paused" : ""}" title="Started ${hhmm(t.start_at)}"><div class="nm">${esc(t.name)}</div><div class="st">${label}</div><div class="tm">${time}</div><div class="ex">${esc(extra)}</div></div>`;
-    }).join("") || '<div class="empty">No PCs synced yet.</div>';
-    $("floorSummary").textContent = `${used} of ${list.length} in use`;
+  // ---------- Chart.js theme ----------
+  const charts = {};
+  function chart(id, config) {
+    if (charts[id]) charts[id].destroy();
+    const el = $(id); if (!el || !window.Chart) return null;
+    charts[id] = new Chart(el, config);
+    return charts[id];
+  }
+  function baseOpts(extra = {}) {
+    const ink3 = css("--ink-3"), line = css("--line");
+    return Object.assign({
+      responsive: true, maintainAspectRatio: false, animation: { duration: 350 },
+      interaction: { mode: "index", intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: { backgroundColor: css("--ink"), titleColor: css("--bg"), bodyColor: css("--bg"), padding: 10, cornerRadius: 8, boxPadding: 4,
+          titleFont: { family: "IBM Plex Sans", weight: "600" }, bodyFont: { family: "IBM Plex Sans" },
+          callbacks: { label: (c) => ` ${c.dataset.label}: ${money(c.parsed.y ?? c.parsed)}` } },
+      },
+      scales: {
+        x: { stacked: true, grid: { display: false }, border: { color: line }, ticks: { color: ink3, font: { family: "IBM Plex Mono", size: 10 }, maxRotation: 0, autoSkipPadding: 10 } },
+        y: { stacked: true, beginAtZero: true, grid: { color: line }, border: { display: false }, ticks: { color: ink3, font: { family: "IBM Plex Mono", size: 10 }, callback: (v) => short(v), maxTicksLimit: 6 } },
+      },
+    }, extra);
+  }
+  const barDS = (label, data, color, extra = {}) => ({ type: "bar", label, data, backgroundColor: color, borderColor: css("--surface"), borderWidth: { top: 2 }, borderRadius: 3, borderSkipped: "bottom", maxBarThickness: 34, ...extra });
+  function legendHtml(items) { return items.map(([l, c, dash]) => `<span><i style="background:${dash ? "transparent;border-top:2px dashed " + c + ";height:0;border-radius:0" : c}"></i>${esc(l)}</span>`).join(""); }
+
+  // ---------- OVERVIEW ----------
+  function renderKpis() {
+    const p = period(), o = sums(cash), po = sums(prevCash);
+    const sp = (filter) => buckets(cash.filter(filter), "at", (r) => Number(r.amount));
+    const isCat = (k) => (r) => catOf(r) === k;
+    const sessPrev = null;
+    const cards = [
+      { hero: true, lbl: "Net income", val: money(o.net), d: delta(o.net, po.net, p.prevLabel), spark: sp((r) => !r.is_expense), color: "#4fd1a5" },
+      { lbl: "PC time", dot: "--s1", val: money(o.pc), d: delta(o.pc, po.pc, p.prevLabel), spark: sp(isCat("pc")), color: css("--s1") },
+      { lbl: "Food & drinks", dot: "--s2", val: money(o.food), d: delta(o.food, po.food, p.prevLabel), spark: sp(isCat("food")), color: css("--s2") },
+      { lbl: "Member top-ups", dot: "--s3", val: money(o.topup), d: delta(o.topup, po.topup, p.prevLabel), spark: sp(isCat("topup")), color: css("--s3") },
+      { lbl: "Sessions closed", val: sessions.length.toLocaleString(), d: `<span class="delta flat"><small>${money(o.expense)} expenses · ${money(o.ticket + o.other)} other</small></span>`, spark: buckets(sessions, "end_at", () => 1), color: css("--ink-3") },
+    ];
+    $("kpis").innerHTML = cards.map((c) => `<div class="card kpi ${c.hero ? "hero" : ""}">
+      <div class="lbl">${c.dot ? `<i style="background:var(${c.dot})"></i>` : ""}${c.lbl}</div>
+      <div class="val">${c.val}</div>${c.d}<div class="spark">${sparkSvg(c.spark, c.color)}</div></div>`).join("");
   }
 
-  // ---------- render: charts ----------
-  function tipFor(host) {
-    let tip = host.querySelector(".tip");
-    if (!tip) { tip = document.createElement("div"); tip.className = "tip"; tip.hidden = true; host.appendChild(tip); }
-    return tip;
+  const STATUS = { 3: "Open time", 4: "Prepaid" };
+  const inUse = (t) => t.status !== 1 && t.status !== 0;
+  function renderOcc() {
+    const used = terminals.filter(inUse), total = terminals.length || 1;
+    const open = used.filter((t) => t.status === 3).length, pre = used.filter((t) => t.status === 4).length, oth = used.length - open - pre;
+    const low = used.filter((t) => t.timer_minute > 0 && minsLeft(t) <= 10).length;
+    $("occPct").textContent = Math.round(used.length / total * 100) + "%";
+    $("occAt").textContent = `${used.length} of ${terminals.length} PCs`;
+    $("occList").innerHTML = [
+      ["Open time", open, "--s1"], ["Prepaid timer", pre, "--s5"], ...(oth ? [["Other in use", oth, "--s-other"]] : []),
+      ["Free", terminals.length - used.length, "--line-2"], ["Ending in 10 min", low, "--warn"],
+    ].map(([l, n, c]) => `<div><dt><i style="background:var(${c})"></i>${l}</dt><dd>${n}</dd></div>`).join("");
+    chart("occChart", { type: "doughnut",
+      data: { labels: ["Open time", "Prepaid", "Other", "Free"], datasets: [{ data: [open, pre, oth, terminals.length - used.length],
+        backgroundColor: [css("--s1"), css("--s5"), css("--s-other"), css("--surface-2")], borderColor: css("--surface"), borderWidth: 2, hoverOffset: 4 }] },
+      options: { responsive: true, maintainAspectRatio: false, cutout: "72%", animation: { duration: 300 }, plugins: { legend: { display: false },
+        tooltip: { callbacks: { label: (c) => ` ${c.label}: ${c.parsed} PCs` } } } } });
   }
-  function niceMax(v) { if (v <= 0) return 100; const p = Math.pow(10, Math.floor(Math.log10(v))); for (const m of [1, 2, 2.5, 5, 10]) if (m * p >= v) return m * p; return 10 * p; }
-  function stackedBars(host, buckets, opts) {
-    // buckets: [{label, tick, parts:{key:value}, expense}]
-    const W = Math.max(280, Math.round(host.clientWidth || 720)), H = opts.h || 220, L = 44, R = 8, T = 10, B = 26;
-    const keys = CATS.map((c) => c.key);
-    const tot = (b) => keys.reduce((s, k) => s + (b.parts[k] || 0), 0);
-    const max = niceMax(Math.max(...buckets.map(tot), 1));
-    const n = buckets.length, slot = (W - L - R) / n, bw = Math.max(2, Math.min(28, slot * 0.7));
-    const every = Math.ceil(n / Math.max(4, Math.floor((W - L) / 56))); // keep tick labels from colliding
-    const y = (v) => T + (H - T - B) * (1 - v / max);
-    let g = "";
-    for (let i = 0; i <= 4; i++) { const v = max * i / 4; g += `<line class="grid" x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}"/><text x="${L - 6}" y="${y(v) + 4}" text-anchor="end">${v >= 1000 ? (v / 1000) + "k" : v}</text>`; }
-    buckets.forEach((b, i) => {
-      const x = L + i * slot + (slot - bw) / 2;
-      let acc = 0;
-      const segs = keys.filter((k) => b.parts[k] > 0);
-      segs.forEach((k, j) => {
-        const v = b.parts[k], y0 = y(acc), y1 = y(acc + v); acc += v;
-        const h = Math.max(0, y0 - y1 - (j < segs.length - 1 ? 0 : 0));
-        const top = j === segs.length - 1;
-        const c = CATS.find((cc) => cc.key === k).color;
-        g += top && h > 4
-          ? `<path d="M${x},${y0} V${y1 + 4} Q${x},${y1} ${x + 4},${y1} H${x + bw - 4} Q${x + bw},${y1} ${x + bw},${y1 + 4} V${y0} Z" fill="${c}"/>`
-          : `<rect x="${x}" y="${y1}" width="${bw}" height="${h}" fill="${c}"/>`;
-        if (!top) g += `<line x1="${x}" x2="${x + bw}" y1="${y1}" y2="${y1}" stroke="var(--surface)" stroke-width="2"/>`;
-      });
-      if (b.tick && i % every === 0) g += `<text x="${x + bw / 2}" y="${H - 8}" text-anchor="middle">${b.tick}</text>`;
-      g += `<rect class="hit" data-i="${i}" x="${L + i * slot}" y="${T}" width="${slot}" height="${H - T - B}" fill="transparent"/>`;
-    });
-    host.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(opts.aria)}">${g}</svg>`;
-    const tip = tipFor(host);
-    host.querySelectorAll(".hit").forEach((r) => {
-      const show = () => {
-        const b = buckets[+r.dataset.i]; const box = host.getBoundingClientRect(); const rb = r.getBoundingClientRect();
-        tip.innerHTML = `${esc(b.label)}<br><b>${money(tot(b))}</b> income` +
-          CATS.filter((c) => b.parts[c.key] > 0).map((c) => `<br>${c.label}: <b>${money(b.parts[c.key])}</b>`).join("") +
-          (b.expense ? `<br>Expenses: <b>${money(b.expense)}</b>` : "");
-        tip.style.left = (rb.left - box.left + rb.width / 2) + "px"; tip.style.top = (rb.top - box.top + 20) + "px"; tip.hidden = false;
-      };
-      r.addEventListener("mouseenter", show); r.addEventListener("click", show);
-      r.addEventListener("mouseleave", () => { tip.hidden = true; });
-    });
-  }
+
   function renderHourly() {
     const p = period();
-    const multi = (p.end - p.start) > 86400000;
-    const buckets = Array.from({ length: 24 }, (_, h) => ({ label: `${String(h).padStart(2, "0")}:00–${String(h + 1).padStart(2, "0")}:00${multi ? " (all days)" : ""}`, tick: String(h).padStart(2, "0"), parts: {}, expense: 0 }));
-    for (const r of cash) {
-      const h = local(r.at).getUTCHours(), k = catOf(r);
-      if (k === "expense") buckets[h].expense += Number(r.amount); else buckets[h].parts[k] = (buckets[h].parts[k] || 0) + Number(r.amount);
-    }
-    $("hourTitle").textContent = multi ? "Income by hour of day" : "Income by hour";
-    $("hourSub").textContent = p.label;
-    stackedBars($("hourChart"), buckets, { aria: "Income by hour" });
-  }
-  function renderDaily() {
-    const byDay = Object.fromEntries(daily.map((d) => [String(d.day).slice(0, 10), d]));
-    const today = new Date(nowMs() + offMin * 60000);
-    const buckets = [];
-    for (let i = 29; i >= 0; i--) {
-      const d = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate() - i));
-      const k = d.toISOString().slice(0, 10), r = byDay[k] || {};
-      const lbl = d.toLocaleDateString("en-PH", { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" });
-      buckets.push({ label: lbl, tick: d.toLocaleDateString("en-PH", { month: "short", day: "numeric", timeZone: "UTC" }),
-        parts: { pc: +r.pc_time || 0, food: +r.products || 0, topup: +r.topups || 0, ticket: +r.tickets || 0, other: +r.other_income || 0 }, expense: +r.expenses || 0 });
-    }
-    stackedBars($("dayChart"), buckets, { aria: "Daily income, last 30 days" });
+    const by = (rows) => { const o = Object.fromEntries(CATS.map((c) => [c.key, new Array(24).fill(0)])); o.total = new Array(24).fill(0);
+      for (const r of rows) { const k = catOf(r); if (k === "expense") continue; const h = local(r.at).getUTCHours(); o[k][h] += +r.amount; o.total[h] += +r.amount; }
+      return o; };
+    const cur = by(cash), prev = by(prevCash);
+    const div = Math.max(1, p.days);
+    const labels = Array.from({ length: 24 }, (_, h) => String(h).padStart(2, "0") + ":00");
+    $("hourSub").textContent = p.days > 1 ? `${p.label}, average per day` : p.label;
+    $("hourLegend").innerHTML = legendHtml([...CATS.map((c) => [c.label, css(c.v)]), ["Previous period", css("--ink-3"), true]]);
+    chart("hourChart", { data: { labels, datasets: [
+      ...CATS.map((c) => barDS(c.label, cur[c.key].map((v) => v / div), css(c.v))),
+      { type: "line", label: "Previous period", data: prev.total.map((v) => v / div), borderColor: css("--ink-3"), borderDash: [4, 4], borderWidth: 1.5, pointRadius: 0, tension: .3, stack: "prev" },
+    ] }, options: baseOpts() });
   }
 
-  // ---------- render: tables ----------
-  function renderFeed(highlightId) {
-    const rows = [...cash].sort((a, b) => b.id - a.id).slice(0, 15);
-    $("feed").innerHTML = rows.map((r) => `<tr class="${r.id === highlightId ? "new" : ""}">
-      <td class="num muted">${hhmm(r.at)}</td>
-      <td><span class="tag ${r.is_expense ? "exp" : ""}">${esc(r.is_expense ? "Expense" : (KIND[r.kind] || "Type " + r.kind))}</span><div class="muted" style="font-size:12px">${esc(r.note)}</div></td>
-      <td class="muted">${esc(r.admin_name)}</td>
-      <td class="r num">${r.is_expense ? "−" : ""}${money(r.amount, 2)}</td></tr>`).join("") || '<tr><td class="empty">No transactions in this period yet.</td></tr>';
+  function renderDaily() {
+    const by = Object.fromEntries(daily.map((d) => [String(d.day).slice(0, 10), d]));
+    const today = dayKey(nowMs()); const keys = [];
+    for (let i = 29; i >= 0; i--) keys.push(new Date(new Date(today + "T00:00:00Z").getTime() - i * 86400000).toISOString().slice(0, 10));
+    const f = { pc: "pc_time", food: "products", topup: "topups", ticket: "tickets", other: "other_income" };
+    const net = keys.map((k) => { const r = by[k] || {}; return CATS.reduce((s, c) => s + (+r[f[c.key]] || 0), 0) - (+r.expenses || 0); });
+    const done = net.slice(0, -1).filter((v) => v > 0);
+    $("dailyAvg").textContent = done.length ? `avg ${money(done.reduce((a, b) => a + b, 0) / done.length)} net per day` : "";
+    $("dailyLegend").innerHTML = legendHtml([...CATS.map((c) => [c.label, css(c.v)]), ["Net (after expenses)", css("--ink")]]);
+    chart("dailyChart", { data: { labels: keys.map((k) => fmtDay(k)), datasets: [
+      ...CATS.map((c) => barDS(c.label, keys.map((k) => +((by[k] || {})[f[c.key]]) || 0), css(c.v))),
+      { type: "line", label: "Net", data: net, borderColor: css("--ink"), backgroundColor: css("--ink"), borderWidth: 1.5, pointRadius: 0, pointHoverRadius: 4, tension: .3, stack: "net" },
+    ] }, options: baseOpts({ plugins: { ...baseOpts().plugins, tooltip: { ...baseOpts().plugins.tooltip, callbacks: {
+      title: (it) => fmtDay(keys[it[0].dataIndex], { weekday: "long", month: "short", day: "numeric" }),
+      label: (c) => ` ${c.dataset.label}: ${money(c.parsed.y)}` } } } }) });
   }
-  function renderStaff() {
+
+  function renderMix() {
+    const o = sums(cash);
+    const items = CATS.filter((c) => o[c.key] > 0);
+    $("mixSub").textContent = period().label.toLowerCase();
+    chart("mixChart", { type: "doughnut", data: { labels: items.map((c) => c.label), datasets: [{ data: items.map((c) => o[c.key]),
+      backgroundColor: items.map((c) => css(c.v)), borderColor: css("--surface"), borderWidth: 2, hoverOffset: 4 }] },
+      options: { responsive: true, maintainAspectRatio: false, cutout: "62%", animation: { duration: 300 },
+        plugins: { legend: { display: false }, tooltip: { callbacks: { label: (c) => ` ${c.label}: ${money(c.parsed)} (${(c.parsed / o.income * 100).toFixed(0)}%)` } } } } });
+    $("mixTable").innerHTML = items.map((c) => `<tr><td><span class="tag"><i style="background:var(${c.v})"></i>${c.label}</span></td>
+      <td class="r num">${money(o[c.key])}</td><td class="r muted" style="width:52px">${(o[c.key] / o.income * 100).toFixed(0)}%</td></tr>`).join("")
+      || '<tr><td class="empty">No income in this period yet.</td></tr>';
+  }
+
+  function renderHeat() {
+    const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+    const grid = days.map(() => new Array(24).fill(0)); const seen = new Set();
+    for (const r of heatRows) { const l = local(r.at); const d = (l.getUTCDay() + 6) % 7; grid[d][l.getUTCHours()] += +r.amount; seen.add(dayKey(r.at)); }
+    const weeks = Math.max(1, seen.size / 7);
+    const max = Math.max(...grid.flat(), 1);
+    const steps = ["--seq-0", "--seq-1", "--seq-2", "--seq-3", "--seq-4", "--seq-5"];
+    const step = (v) => v <= 0 ? 0 : Math.min(5, 1 + Math.floor(v / max * 4.999));
+    let h = '<div></div>' + Array.from({ length: 24 }, (_, i) => `<div class="h">${String(i).padStart(2, "0")}</div>`).join("");
+    days.forEach((d, di) => {
+      h += `<div class="d">${d}</div>` + grid[di].map((v, hi) => `<div class="c" style="background:var(${steps[step(v)]})" title="${d} ${String(hi).padStart(2, "0")}:00 · avg ${money(v / weeks)} PC income"></div>`).join("");
+    });
+    $("heat").innerHTML = h;
+    $("heatScale").innerHTML = `<span>Quiet</span>${steps.map((s) => `<i style="background:var(${s})"></i>`).join("")}<span>Busy</span><span style="margin-left:auto">busiest hour averages ${money(max / weeks)}</span>`;
+  }
+
+  function renderFeed(hl) {
+    const rows = [...cash].sort((a, b) => b.id - a.id).slice(0, 40);
+    $("feed").innerHTML = rows.map((r) => { const k = catOf(r);
+      return `<tr class="${r.id === hl ? "new" : ""}"><td class="mono muted" style="width:52px">${hhmm(r.at)}</td>
+      <td><span class="tag ${r.is_expense ? "exp" : ""}">${r.is_expense ? "" : `<i style="background:${catColor(k)}"></i>`}${esc(r.is_expense ? (KIND[r.kind] === "Refund" ? "Refund" : "Expense") : (KIND[r.kind] || "Type " + r.kind))}</span>
+        <div class="note">${esc((r.note || "").replace(/^Money deposited to member account\.\s*/, "Top-up "))}${r.admin_name ? " · " + esc(r.admin_name) : ""}</div></td>
+      <td class="r num">${r.is_expense ? "−" : ""}${money(r.amount, 2)}</td></tr>`; }).join("")
+      || '<tr><td class="empty">No transactions in this period yet.</td></tr>';
+  }
+
+  // ---------- PCS ----------
+  const minsSince = (t) => Math.max(0, Math.floor((nowMs() - new Date(t.start_at).getTime()) / 60000));
+  const minsLeft = (t) => t.timer_minute - minsSince(t);
+  function renderFloor() {
+    const list = [...terminals].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+    $("floor").innerHTML = list.map((t) => {
+      if (!inUse(t)) return `<div class="pc free"><div class="nm">${esc(t.name)}<span class="chip">Free</span></div><div class="tm">Available</div></div>`;
+      const m = minsSince(t), timed = t.timer_minute > 0, left = timed ? minsLeft(t) : null, low = timed && left <= 10;
+      const label = t.paused ? "Paused" : (STATUS[t.status] || "In use");
+      const time = timed ? `${Math.max(left, 0)} min left` : `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, "0")}m`;
+      const extra = [t.prepaid_amount > 0 ? money(t.prepaid_amount) + " paid" : "", t.order_amount > 0 ? money(t.order_amount) + " food" : "", t.open_admin || ""].filter(Boolean).join(" · ");
+      const pct = timed ? Math.min(100, m / t.timer_minute * 100) : 0;
+      return `<div class="pc on ${low ? "low" : ""}" title="Started ${hhmm(t.start_at)}"><div class="nm">${esc(t.name)}<span class="chip">${label}</span></div>
+        <div class="tm">${time}</div><div class="ex">since ${hhmm(t.start_at)}${extra ? " · " + esc(extra) : ""}</div>${timed ? `<div class="bar"><b style="width:${pct}%"></b></div>` : ""}</div>`;
+    }).join("") || '<div class="empty">No PCs synced yet.</div>';
+    const used = list.filter(inUse).length;
+    $("floorSummary").textContent = `${used} of ${list.length} in use · updates live`;
+  }
+  function pcStats() {
     const by = {};
-    for (const r of cash) { const s = (by[r.admin_name] ||= []); s.push(r); }
-    const rows = Object.entries(by).map(([n, rs]) => [n, sums(rs)]).sort((a, b) => b[1].net - a[1].net);
-    $("staff").innerHTML = rows.map(([n, o]) => `<tr><td>${esc(n)}</td><td class="r num">${money(o.pc)}</td><td class="r num">${money(o.food)}</td><td class="r num">${money(o.topup)}</td><td class="r num">${money(o.expense)}</td><td class="r num"><b>${money(o.net)}</b></td></tr>`).join("") || '<tr><td colspan="6" class="empty">No activity in this period.</td></tr>';
-    $("staffSub").textContent = period().label;
+    for (const s of sessions) { const o = (by[s.terminal_name] ||= { n: 0, min: 0, total: 0 }); o.n++; o.min += s.using_min; o.total += +s.total_price; }
+    return Object.entries(by).sort((a, b) => a[0].localeCompare(b[0], undefined, { numeric: true }));
   }
+  function renderPcCharts() {
+    const p = period(), st = pcStats();
+    $("pcHoursSub").textContent = $("lenSub").textContent = $("pcRankSub").textContent = p.label.toLowerCase();
+    chart("pcHoursChart", { type: "bar", data: { labels: st.map((x) => x[0]), datasets: [barDS("Hours", st.map((x) => +(x[1].min / 60).toFixed(1)), css("--s1"))] },
+      options: baseOpts({ plugins: { legend: { display: false }, tooltip: { ...baseOpts().plugins.tooltip, callbacks: { label: (c) => ` ${c.parsed.y} hours · ${st[c.dataIndex][1].n} sessions · ${money(st[c.dataIndex][1].total)}` } } },
+        scales: { ...baseOpts().scales, y: { ...baseOpts().scales.y, ticks: { ...baseOpts().scales.y.ticks, callback: (v) => v + "h" } } } }) });
+    const bins = [[0, 30, "<30m"], [30, 60, "30–60m"], [60, 120, "1–2h"], [120, 180, "2–3h"], [180, 300, "3–5h"], [300, 1e9, "5h+"]];
+    const counts = bins.map(([a, b]) => sessions.filter((s) => s.using_min >= a && s.using_min < b).length);
+    chart("lenChart", { type: "bar", data: { labels: bins.map((b) => b[2]), datasets: [barDS("Sessions", counts, css("--s5"))] },
+      options: baseOpts({ plugins: { legend: { display: false }, tooltip: { ...baseOpts().plugins.tooltip, callbacks: { label: (c) => ` ${c.parsed.y} sessions` } } },
+        scales: { ...baseOpts().scales, y: { ...baseOpts().scales.y, ticks: { ...baseOpts().scales.y.ticks, callback: (v) => v } } } }) });
+    const tot = st.reduce((s, x) => s + x[1].total, 0) || 1;
+    $("pcRank").innerHTML = [...st].sort((a, b) => b[1].total - a[1].total).map(([n, o]) => `<tr><td><b>${esc(n)}</b></td><td class="r num">${o.n}</td>
+      <td class="r num">${(o.min / 60).toFixed(1)}</td><td class="r num">${Math.round(o.min / o.n)} min</td><td class="r num">${money(o.total)}</td>
+      <td><div class="share"><div class="b"><i style="width:${o.total / tot * 100}%;background:var(--s1)"></i></div><span class="muted">${(o.total / tot * 100).toFixed(0)}%</span></div></td></tr>`).join("")
+      || '<tr><td colspan="6" class="empty">No sessions closed in this period.</td></tr>';
+  }
+
+  // ---------- SALES ----------
+  function renderSales() {
+    const p = period();
+    $("salesSub").textContent = p.days > 1 ? `${p.label.toLowerCase()}, per day` : `${p.label.toLowerCase()}, per hour`;
+    let labels;
+    if (p.days <= 1) labels = Array.from({ length: 24 }, (_, h) => String(h).padStart(2, "0") + ":00");
+    else { labels = []; for (let t = p.start.getTime(); t < p.end.getTime(); t += 86400000) labels.push(fmtDay(dayKey(t))); }
+    $("salesLegend").innerHTML = legendHtml([...CATS.map((c) => [c.label, css(c.v)]), ["Expenses", css("--bad")]]);
+    chart("salesChart", { data: { labels, datasets: [
+      ...CATS.map((c) => barDS(c.label, buckets(cash.filter((r) => catOf(r) === c.key), "at", (r) => +r.amount), css(c.v))),
+      barDS("Expenses", buckets(cash.filter((r) => r.is_expense), "at", (r) => -r.amount), css("--bad")),
+    ] }, options: baseOpts() });
+    // by type
+    const t = {}; for (const r of cash) { const k = r.is_expense ? (r.kind === 6 ? "Refund" : "Expense") : (KIND[r.kind] || "Type " + r.kind); (t[k] ||= { n: 0, a: 0, exp: r.is_expense, cat: catOf(r) }); t[k].n++; t[k].a += +r.amount; }
+    const inc = sums(cash).income || 1;
+    $("typeSub").textContent = $("expSub").textContent = p.label.toLowerCase();
+    $("typeTable").innerHTML = Object.entries(t).sort((a, b) => b[1].a - a[1].a).map(([k, o]) => `<tr><td><span class="tag ${o.exp ? "exp" : ""}">${o.exp ? "" : `<i style="background:${catColor(o.cat)}"></i>`}${esc(k)}</span></td>
+      <td class="r num">${o.n}</td><td class="r num">${o.exp ? "−" : ""}${money(o.a, 2)}</td>
+      <td>${o.exp ? "" : `<div class="share"><div class="b"><i style="width:${o.a / inc * 100}%;background:${catColor(o.cat)}"></i></div><span class="muted">${(o.a / inc * 100).toFixed(0)}%</span></div>`}</td></tr>`).join("")
+      || '<tr><td colspan="4" class="empty">Nothing recorded in this period.</td></tr>';
+    const ex = cash.filter((r) => r.is_expense).sort((a, b) => b.id - a.id);
+    $("expTable").innerHTML = ex.map((r) => `<tr><td class="mono muted">${p.days > 1 ? fmtDay(dayKey(r.at)) + " " : ""}${hhmm(r.at)}</td><td>${esc(r.note || (KIND[r.kind] || ""))}</td><td class="muted">${esc(r.admin_name)}</td><td class="r num">−${money(r.amount, 2)}</td></tr>`).join("")
+      || '<tr><td colspan="4" class="empty">No expenses in this period.</td></tr>';
+  }
+
+  // ---------- PRODUCTS ----------
   function renderProducts() {
-    const by = {};
-    for (const m of moves) { if (m.direction !== 1) continue; const o = (by[m.product] ||= { qty: 0, total: 0 }); o.qty += m.qty; o.total += Number(m.total); }
-    const rows = Object.entries(by).sort((a, b) => b[1].total - a[1].total).slice(0, 10);
-    $("products").innerHTML = rows.map(([n, o]) => `<tr><td>${esc(n)}</td><td class="r num">${o.qty}</td><td class="r num">${money(o.total)}</td></tr>`).join("") || '<tr><td colspan="3" class="empty">No product sales in this period.</td></tr>';
-    $("prodSub").textContent = period().label;
+    const p = period();
+    const by = {}; for (const m of moves) { if (m.direction !== 1) continue; const o = (by[m.product] ||= { qty: 0, total: 0 }); o.qty += m.qty; o.total += +m.total; }
+    const top = Object.entries(by).sort((a, b) => b[1].total - a[1].total).slice(0, 10);
+    $("prodSub").textContent = $("prodHourSub").textContent = p.label.toLowerCase();
+    chart("prodChart", { type: "bar", data: { labels: top.map((x) => x[0]), datasets: [barDS("Sales", top.map((x) => x[1].total), css("--s2"), { borderWidth: 0, borderSkipped: "start" })] },
+      options: baseOpts({ indexAxis: "y", plugins: { legend: { display: false }, tooltip: { ...baseOpts().plugins.tooltip, callbacks: { label: (c) => ` ${money(c.parsed.x)} · ${top[c.dataIndex][1].qty} sold` } } },
+        scales: { x: { ...baseOpts().scales.y, stacked: false }, y: { ...baseOpts().scales.x, stacked: false, ticks: { ...baseOpts().scales.x.ticks, font: { family: "IBM Plex Sans", size: 12 } } } } }) });
+    const hrs = new Array(24).fill(0); for (const m of moves) if (m.direction === 1) hrs[local(m.at).getUTCHours()] += +m.total;
+    chart("prodHourChart", { type: "bar", data: { labels: hrs.map((_, h) => String(h).padStart(2, "0")), datasets: [barDS("Food & drinks", hrs, css("--s2"))] }, options: baseOpts() });
+    const sold = Object.fromEntries(Object.entries(by));
+    $("prodTable").innerHTML = [...products].sort((a, b) => ((sold[b.name] || {}).total || 0) - ((sold[a.name] || {}).total || 0) || a.name.localeCompare(b.name))
+      .map((x) => { const s = sold[x.name] || { qty: 0, total: 0 }; return `<tr><td>${esc(x.name)}</td><td class="r num">${money(x.price)}</td><td class="r num">${s.qty || "–"}</td>
+        <td class="r num">${s.total ? money(s.total) : "–"}</td><td class="r num ${x.stock < 0 ? "muted" : ""}">${x.stock}</td></tr>`; }).join("")
+      || '<tr><td colspan="5" class="empty">No products synced yet.</td></tr>';
   }
-  function renderPCs() {
-    const by = {};
-    for (const s of sessions) { const o = (by[s.terminal_name] ||= { n: 0, min: 0, total: 0 }); o.n++; o.min += s.using_min; o.total += Number(s.total_price); }
-    const rows = Object.entries(by).sort((a, b) => b[1].total - a[1].total).slice(0, 10);
-    $("pcs").innerHTML = rows.map(([n, o]) => `<tr><td>${esc(n)}</td><td class="r num">${o.n}</td><td class="r num">${(o.min / 60).toFixed(1)}</td><td class="r num">${money(o.total)}</td></tr>`).join("") || '<tr><td colspan="4" class="empty">No sessions closed in this period.</td></tr>';
-    $("pcSub").textContent = period().label;
+
+  // ---------- STAFF ----------
+  function renderStaff() {
+    const p = period();
+    const by = {}; for (const r of cash) (by[r.admin_name || "—"] ||= []).push(r);
+    const rows = Object.entries(by).map(([n, rs]) => [n, sums(rs)]).sort((a, b) => b[1].net - a[1].net);
+    $("staffSub").textContent = p.label.toLowerCase();
+    $("staffLegend").innerHTML = legendHtml(CATS.map((c) => [c.label, css(c.v)]));
+    chart("staffChart", { type: "bar", data: { labels: rows.map((x) => x[0]), datasets: CATS.map((c) => barDS(c.label, rows.map((x) => x[1][c.key]), css(c.v), { borderWidth: 0, borderSkipped: "start", maxBarThickness: 28 })) },
+      options: baseOpts({ indexAxis: "y", scales: { x: { ...baseOpts().scales.y }, y: { ...baseOpts().scales.x, ticks: { ...baseOpts().scales.x.ticks, font: { family: "IBM Plex Sans", size: 12 } } } } }) });
+    $("staffTable").innerHTML = rows.map(([n, o]) => `<tr><td><b>${esc(n)}</b></td><td class="r num">${money(o.pc)}</td><td class="r num">${money(o.food)}</td><td class="r num">${money(o.topup)}</td>
+      <td class="r num">${money(o.ticket + o.other)}</td><td class="r num">${money(o.expense)}</td><td class="r num"><b>${money(o.net)}</b></td></tr>`).join("")
+      || '<tr><td colspan="7" class="empty">No activity in this period.</td></tr>';
+    const sh = {}; for (const r of cash) { const k = dayKey(r.at) + "|" + (r.admin_name || "—"); const o = (sh[k] ||= { a: r.at, b: r.at, rows: [] }); if (r.at < o.a) o.a = r.at; if (r.at > o.b) o.b = r.at; o.rows.push(r); }
+    $("shiftTable").innerHTML = Object.entries(sh).sort((a, b) => (b[1].b > a[1].b ? 1 : -1)).map(([k, o]) => { const [d, n] = k.split("|");
+      return `<tr><td>${fmtDay(d, { weekday: "short", month: "short", day: "numeric" })}</td><td>${esc(n)}</td><td class="r mono">${hhmm(o.a)}</td><td class="r mono">${hhmm(o.b)}</td><td class="r num">${money(sums(o.rows).net)}</td></tr>`; }).join("")
+      || '<tr><td colspan="5" class="empty">No shifts in this period.</td></tr>';
   }
+
+  // ---------- MEMBERS ----------
   function renderMembers() {
-    const rows = [...members].filter((m) => m.active).sort((a, b) => b.balance - a.balance).slice(0, 10);
-    const owed = members.reduce((s, m) => s + Number(m.balance || 0), 0);
-    $("members").innerHTML = rows.map((m) => `<tr><td>${esc(m.username)}${m.logged_in ? ' <span class="tag">online</span>' : ""}</td><td class="r num">${money(m.balance, 2)}</td><td class="r num muted">${esc(m.last_login_on || "")}</td></tr>`).join("") || '<tr><td colspan="3" class="empty">No members synced yet.</td></tr>';
-    $("memSub").textContent = `${members.length} members · ${money(owed)} prepaid balance`;
+    const owed = members.reduce((s, m) => s + +m.balance, 0), active = members.filter((m) => m.active).length;
+    const recent = members.filter((m) => m.last_login_on && (nowMs() - new Date(m.last_login_on).getTime()) < 30 * 86400000).length;
+    const online = members.filter((m) => m.logged_in).length;
+    $("memKpis").innerHTML = [["Members", members.length, `${active} active accounts`], ["Prepaid balance held", money(owed), "money members can still spend"],
+      ["Visited in 30 days", recent, `${members.length ? Math.round(recent / members.length * 100) : 0}% of members`], ["Online now", online, "logged in on a PC"]]
+      .map(([l, v, s]) => `<div class="card kpi"><div class="lbl">${l}</div><div class="val">${v}</div><span class="delta flat"><small>${s}</small></span></div>`).join("");
+    const by = Object.fromEntries(daily.map((d) => [String(d.day).slice(0, 10), +d.topups || 0]));
+    const today = dayKey(nowMs()); const keys = []; for (let i = 29; i >= 0; i--) keys.push(new Date(new Date(today + "T00:00:00Z").getTime() - i * 86400000).toISOString().slice(0, 10));
+    chart("topupChart", { data: { labels: keys.map((k) => fmtDay(k)), datasets: [barDS("Top-ups", keys.map((k) => by[k] || 0), css("--s3"))] }, options: baseOpts() });
+    const top = [...members].sort((a, b) => b.balance - a.balance).slice(0, 8);
+    chart("balChart", { type: "bar", data: { labels: top.map((m) => m.username), datasets: [barDS("Balance", top.map((m) => +m.balance), css("--s3"), { borderWidth: 0, borderSkipped: "start" })] },
+      options: baseOpts({ indexAxis: "y", plugins: { legend: { display: false }, tooltip: { ...baseOpts().plugins.tooltip, callbacks: { label: (c) => ` ${money(c.parsed.x, 2)}` } } },
+        scales: { x: { ...baseOpts().scales.y, stacked: false }, y: { ...baseOpts().scales.x, stacked: false, ticks: { ...baseOpts().scales.x.ticks, font: { family: "IBM Plex Sans", size: 12 } } } } }) });
+    $("memTable").innerHTML = [...members].sort((a, b) => (b.last_login_on || "").localeCompare(a.last_login_on || "")).map((m) => `<tr>
+      <td><b>${esc(m.username)}</b></td><td>${m.logged_in ? '<span class="tag" style="background:var(--good-bg);color:var(--good)">Online</span>' : m.active ? '<span class="tag">Active</span>' : '<span class="tag exp">Disabled</span>'}</td>
+      <td class="r num">${money(m.balance, 2)}</td><td class="r num">${money(m.bonus, 2)}</td><td class="r num">${money(m.total_deposited)}</td>
+      <td class="r num">${Math.round((m.total_minutes || 0) / 60)}</td><td class="r mono muted">${m.last_login_on ? fmtDay(String(m.last_login_on).slice(0, 10), { year: "numeric", month: "short", day: "numeric" }) : "–"}</td></tr>`).join("")
+      || '<tr><td colspan="7" class="empty">No members synced yet.</td></tr>';
   }
+
+  // ---------- status ----------
   function renderAgent() {
     const el = $("syncPill");
-    if (!agent) { el.className = "pill bad"; el.textContent = demo ? "Sample data" : "No data yet: is the PanCafe PC agent running, and is your email on the access list?"; return; }
+    if (!agent) { el.className = "pill bad"; el.innerHTML = `<i></i>${demo ? "Sample data" : "No data yet. Is the PanCafe PC on?"}`; return; }
     const age = (nowMs() - new Date(agent.last_seen).getTime()) / 1000;
-    const txt = age < 90 ? `Live · synced ${Math.max(0, Math.round(age))}s ago` : age < 3600 ? `PC offline ${Math.round(age / 60)} min` : `PC offline since ${new Date(agent.last_seen).toLocaleString("en-PH")}`;
+    const txt = age < 90 ? `Live · synced ${Math.max(0, Math.round(age))}s ago` : age < 3600 ? `PanCafe PC offline ${Math.round(age / 60)} min` : `PanCafe PC offline since ${new Date(agent.last_seen).toLocaleString("en-PH", { dateStyle: "medium", timeStyle: "short" })}`;
     el.className = "pill " + (age < 90 ? "good" : age < 600 ? "warn" : "bad");
-    el.textContent = txt;
+    el.innerHTML = `<i></i>${txt}`;
   }
-  function renderLegend() {
-    $("catLegend").innerHTML = CATS.map((c) => `<span><i style="background:${c.color}"></i>${c.label}</span>`).join("");
+
+  // ---------- views ----------
+  const TITLES = { overview: "Overview", pcs: "PCs", sales: "Sales", products: "Food & drinks", staff: "Staff", members: "Members" };
+  function renderView() {
+    const p = period();
+    $("viewTitle").firstChild.textContent = TITLES[view];
+    $("viewSub").textContent = view === "members" ? "all time" : `${p.label} · ${local(p.start).toISOString().slice(0, 10) === local(new Date(p.end - 1)).toISOString().slice(0, 10) ? fmtDay(dayKey(p.start), { weekday: "long", month: "long", day: "numeric" }) : fmtDay(dayKey(p.start)) + " – " + fmtDay(dayKey(p.end - 1))}`;
+    document.querySelectorAll("[data-view]").forEach((s) => { s.hidden = s.dataset.view !== view; });
+    $("rangeSeg").parentElement.querySelector(".seg").hidden = view === "members";
+    if (view === "overview") { renderKpis(); renderOcc(); renderHourly(); renderDaily(); renderMix(); renderHeat(); renderFeed(); }
+    if (view === "pcs") { renderFloor(); renderPcCharts(); }
+    if (view === "sales") renderSales();
+    if (view === "products") renderProducts();
+    if (view === "staff") renderStaff();
+    if (view === "members") renderMembers();
+    renderAgent();
   }
-  function renderAll() { renderMoney(); renderFloor(); renderHourly(); renderDaily(); renderFeed(); renderStaff(); renderProducts(); renderPCs(); renderMembers(); renderAgent(); }
+  function setView(v) {
+    view = v;
+    document.querySelectorAll("#nav button").forEach((b) => b.toggleAttribute("aria-current", b.dataset.v === v) || b.dataset.v === v && b.setAttribute("aria-current", "page"));
+    try { localStorage.setItem("pcl-view", v); } catch (e) {}
+    renderView();
+    window.scrollTo({ top: 0 });
+  }
 
   // ---------- realtime ----------
   function subscribe() {
@@ -473,17 +904,18 @@ tr:last-child td { border-bottom: 0; }
       .on("postgres_changes", { event: "*", schema: "public", table: "pancafe_terminals" }, (e) => {
         if (e.eventType === "DELETE") terminals = terminals.filter((t) => t.id !== e.old.id);
         else { const i = terminals.findIndex((t) => t.id === e.new.id); if (i >= 0) terminals[i] = e.new; else terminals.push(e.new); }
-        renderFloor();
+        if (view === "pcs") renderFloor(); if (view === "overview") renderOcc();
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "pancafe_cash" }, (e) => {
-        if (e.eventType === "DELETE" || !inPeriod(e.new.at, period())) return;
+        if (e.eventType === "DELETE" || !inWin(e.new.at, period().start, period().end)) return;
         const i = cash.findIndex((r) => r.id === e.new.id); if (i >= 0) cash[i] = e.new; else cash.push(e.new);
-        renderMoney(); renderHourly(); renderFeed(e.new.id); renderStaff();
+        if (view === "overview") { renderKpis(); renderHourly(); renderMix(); renderFeed(e.new.id); }
+        else if (view === "sales" || view === "staff") renderView();
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "pancafe_sessions" }, (e) => {
-        if (e.eventType === "DELETE" || !inPeriod(e.new.end_at, period())) return;
+        if (e.eventType === "DELETE" || !inWin(e.new.end_at, period().start, period().end)) return;
         const i = sessions.findIndex((r) => r.id === e.new.id); if (i >= 0) sessions[i] = e.new; else sessions.push(e.new);
-        renderMoney(); renderPCs();
+        if (view === "overview") renderKpis(); if (view === "pcs") renderPcCharts();
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "pancafe_agent_status" }, (e) => { agent = e.new; renderAgent(); })
       .subscribe();
@@ -491,48 +923,47 @@ tr:last-child td { border-bottom: 0; }
 
   // ---------- boot ----------
   async function refresh(full) {
-    try { if (full) await loadStatic(); await loadPeriod(); renderAll(); }
-    catch (err) { $("syncPill").className = "pill bad"; $("syncPill").textContent = "Can't load data: " + (err.message || err); }
+    try { if (full) await loadStatic(); await loadPeriod(); renderView(); }
+    catch (err) { $("syncPill").className = "pill bad"; $("syncPill").innerHTML = "<i></i>Can't load data: " + esc(err.message || err); }
   }
-  async function start() {
+  async function start(session) {
     $("login").hidden = true; $("app").hidden = false;
-    renderLegend();
+    $("who").textContent = session?.user?.email || (demo ? "Preview" : "");
+    try { const v = localStorage.getItem("pcl-view"); if (v && TITLES[v]) view = v; } catch (e) {}
+    document.querySelectorAll("#nav button").forEach((b) => b.dataset.v === view ? b.setAttribute("aria-current", "page") : b.removeAttribute("aria-current"));
     await refresh(true);
     subscribe();
-    setInterval(() => { renderFloor(); renderAgent(); }, 15000);          // tick clocks
-    setInterval(() => refresh(true), 5 * 60000);                         // safety net if realtime drops
+    setInterval(() => { if (view === "pcs") renderFloor(); if (view === "overview") renderOcc(); renderAgent(); }, 15000);
+    setInterval(() => refresh(true), 5 * 60000);   // safety net if realtime drops
   }
-  let rz; addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(() => { if (!$("app").hidden) { renderHourly(); renderDaily(); } }, 200); });
+  $("nav").addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return;
+    view = b.dataset.v; document.querySelectorAll("#nav button").forEach((x) => x === b ? x.setAttribute("aria-current", "page") : x.removeAttribute("aria-current"));
+    try { localStorage.setItem("pcl-view", view); } catch (err) {}
+    renderView(); window.scrollTo({ top: 0 }); });
   $("rangeSeg").addEventListener("click", (e) => {
     const b = e.target.closest("button"); if (!b) return;
     range = b.dataset.r;
     $("rangeSeg").querySelectorAll("button").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+    $("customBox").hidden = range !== "custom";
+    if (range === "custom" && !$("fromDate").value) { const t = dayKey(nowMs()); $("fromDate").value = $("toDate").value = t; }
     refresh(false);
   });
+  ["fromDate", "toDate"].forEach((id) => $(id).addEventListener("change", () => { if ($("toDate").value < $("fromDate").value) $("toDate").value = $("fromDate").value; refresh(false); }));
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { if (!$("app").hidden) renderView(); });
+  new MutationObserver(() => { if (!$("app").hidden) renderView(); }).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
 
-  if (demo) { start(); return; }
+  if (demo) { start(null); return; }
 
   const msg = (t, err) => { $("loginMsg").textContent = t; $("loginMsg").className = "msg" + (err ? " err" : ""); };
   $("loginForm").addEventListener("submit", async (e) => {
     e.preventDefault(); msg("Signing in…");
     const { error } = await sb.auth.signInWithPassword({ email: $("email").value.trim(), password: $("password").value });
-    if (error) msg(error.message, true);
-  });
-  $("signupBtn").addEventListener("click", async () => {
-    if (!$("email").value.trim() || $("password").value.length < 8) {
-      msg("To create an account, type your email and choose a password of at least 8 characters, then tap Create account again.", true);
-      ($("email").value.trim() ? $("password") : $("email")).focus();
-      return;
-    }
-    msg("Creating account…");
-    const { data, error } = await sb.auth.signUp({ email: $("email").value.trim(), password: $("password").value, options: { emailRedirectTo: location.href.split("#")[0] } });
-    if (error) msg(error.message, true);
-    else if (!data.session) msg("Check your email and click the confirmation link, then sign in here.");
+    if (error) msg(error.message === "Invalid login credentials" ? "That email and password don't match. Check both and try again." : error.message, true);
   });
   $("signoutBtn").addEventListener("click", () => sb.auth.signOut());
   let started = false;
   sb.auth.onAuthStateChange((_ev, session) => {
-    if (session && !started) { started = true; start(); }
+    if (session && !started) { started = true; start(session); }
     if (!session) { started = false; $("app").hidden = true; $("login").hidden = false; }
   });
 })();
