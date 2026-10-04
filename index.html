@@ -546,10 +546,18 @@ tbody tr:hover td { background: var(--surface-2); }
   const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
   const offMin = (() => { const m = TZ.match(/([+-])(\d\d):(\d\d)/); return (m[1] === "-" ? -1 : 1) * (+m[2] * 60 + +m[3]); })();
   const local = (d) => new Date(new Date(d).getTime() + offMin * 60000); // read with getUTC*
+  // The business day runs from DAY_H (7 AM) to 7 AM the next morning: income at 2 AM counts
+  // toward the day before. biz() shifts a time so that its UTC date is the business date and
+  // its UTC hour is the slot within that day (0 = 7 AM).
+  const DAY_H = Number.isFinite(CFG.dayStartHour) ? CFG.dayStartHour : 7;
+  const biz = (d) => new Date(new Date(d).getTime() + (offMin - DAY_H * 60) * 60000);
+  const slot = (d) => biz(d).getUTCHours();
+  const slotLabel = (i, suffix = ":00") => String((i + DAY_H) % 24).padStart(2, "0") + suffix;
+  const clock = (h) => `${h % 12 || 12} ${h < 12 ? "AM" : "PM"}`;
   const money = (v, dp = 0) => CUR + Number(v || 0).toLocaleString("en-PH", { minimumFractionDigits: dp, maximumFractionDigits: dp });
   const short = (v) => Math.abs(v) >= 1000 ? CUR + (v / 1000).toFixed(v >= 10000 ? 0 : 1) + "k" : CUR + Math.round(v);
   const hhmm = (d) => { const l = local(d); return String(l.getUTCHours()).padStart(2, "0") + ":" + String(l.getUTCMinutes()).padStart(2, "0"); };
-  const dayKey = (d) => local(d).toISOString().slice(0, 10);
+  const dayKey = (d) => biz(d).toISOString().slice(0, 10);
   const fmtDay = (k, o = { month: "short", day: "numeric" }) => new Date(k + "T00:00:00Z").toLocaleDateString("en-PH", { ...o, timeZone: "UTC" });
   const catOf = (row) => row.is_expense ? "expense" : (CATS.find((c) => c.kinds && c.kinds.includes(row.kind)) || CATS[4]).key;
   const catColor = (k) => css((CATS.find((c) => c.key === k) || {}).v || "--bad");
@@ -581,9 +589,9 @@ tbody tr:hover td { background: var(--surface-2); }
 
   // ---------- period ----------
   let range = "today", view = "overview";
-  const atLocal = (Y, M, D) => new Date(Date.UTC(Y, M, D) - offMin * 60000);
+  const atLocal = (Y, M, D) => new Date(Date.UTC(Y, M, D, DAY_H) - offMin * 60000); // start of a business day
   function period() {
-    const l = new Date(nowMs() + offMin * 60000);
+    const l = biz(nowMs());
     const y = l.getUTCFullYear(), m = l.getUTCMonth(), d = l.getUTCDate();
     let p;
     switch (range) {
@@ -610,7 +618,7 @@ tbody tr:hover td { background: var(--surface-2); }
   const inWin = (t, a, b) => { const x = new Date(t).getTime(); return x >= a.getTime() && x < b.getTime(); };
 
   // ---------- state ----------
-  let cash = [], prevCash = [], sessions = [], moves = [], terminals = [], members = [], products = [], daily = [], heatRows = [], agent = null;
+  let cash = [], prevCash = [], sessions = [], moves = [], terminals = [], members = [], products = [], dayRows = [], agent = null;
 
   async function loadPeriod() {
     const p = period();
@@ -627,14 +635,13 @@ tbody tr:hover td { background: var(--surface-2); }
     prevCash = both.filter((r) => inWin(r.at, p.prevStart, p.prevEnd));
   }
   async function loadStatic() {
-    const since30 = new Date(nowMs() - 31 * 86400000).toISOString().slice(0, 10);
-    const since28 = new Date(nowMs() - 28 * 86400000).toISOString();
+    // last 31 business days of cash, for the daily chart, top-ups chart and heatmap
+    const since = new Date(nowMs() - 32 * 86400000).toISOString();
     const all = (t) => t.select("*");
-    [terminals, members, products, daily, heatRows] = await Promise.all([
+    [terminals, members, products, dayRows] = await Promise.all([
       q("pancafe_terminals", all), q("pancafe_members", all), q("pancafe_products", all),
-      q("pancafe_daily", (t) => t.select("*").gte("day", since30).order("day"), (r) => r.filter((x) => x.day >= since30)),
-      q("pancafe_cash", (t) => t.select("id,at,amount,kind,is_expense").gte("at", since28).eq("kind", 1).eq("is_expense", false).order("id"),
-        (r) => r.filter((x) => x.at >= since28 && x.kind === 1 && !x.is_expense)),
+      q("pancafe_cash", (t) => t.select("id,at,amount,kind,is_expense").gte("at", since).order("id"),
+        (r) => r.filter((x) => new Date(x.at) >= new Date(since))),
     ]);
     const a = await q("pancafe_agent_status", all); agent = a[0] || null;
   }
@@ -669,7 +676,7 @@ tbody tr:hover td { background: var(--surface-2); }
     const p = period();
     if (p.days <= 1) {
       const b = new Array(24).fill(0);
-      for (const r of rows) b[local(r[field]).getUTCHours()] += valueOf(r);
+      for (const r of rows) b[slot(r[field])] += valueOf(r);
       return b;
     }
     const keys = [], idx = {};
@@ -747,11 +754,11 @@ tbody tr:hover td { background: var(--surface-2); }
   function renderHourly() {
     const p = period();
     const by = (rows) => { const o = Object.fromEntries(CATS.map((c) => [c.key, new Array(24).fill(0)])); o.total = new Array(24).fill(0);
-      for (const r of rows) { const k = catOf(r); if (k === "expense") continue; const h = local(r.at).getUTCHours(); o[k][h] += +r.amount; o.total[h] += +r.amount; }
+      for (const r of rows) { const k = catOf(r); if (k === "expense") continue; const h = slot(r.at); o[k][h] += +r.amount; o.total[h] += +r.amount; }
       return o; };
     const cur = by(cash), prev = by(prevCash);
     const div = Math.max(1, p.days);
-    const labels = Array.from({ length: 24 }, (_, h) => String(h).padStart(2, "0") + ":00");
+    const labels = Array.from({ length: 24 }, (_, h) => slotLabel(h));
     $("hourSub").textContent = p.days > 1 ? `${p.label}, average per day` : p.label;
     $("hourLegend").innerHTML = legendHtml([...CATS.map((c) => [c.label, css(c.v)]), ["Previous period", css("--ink-3"), true]]);
     chart("hourChart", { data: { labels, datasets: [
@@ -760,17 +767,22 @@ tbody tr:hover td { background: var(--surface-2); }
     ] }, options: baseOpts() });
   }
 
-  function renderDaily() {
-    const by = Object.fromEntries(daily.map((d) => [String(d.day).slice(0, 10), d]));
+  // totals per business day (7 AM to 7 AM) for the last 30 days
+  function last30() {
     const today = dayKey(nowMs()); const keys = [];
     for (let i = 29; i >= 0; i--) keys.push(new Date(new Date(today + "T00:00:00Z").getTime() - i * 86400000).toISOString().slice(0, 10));
-    const f = { pc: "pc_time", food: "products", topup: "topups", ticket: "tickets", other: "other_income" };
-    const net = keys.map((k) => { const r = by[k] || {}; return CATS.reduce((s, c) => s + (+r[f[c.key]] || 0), 0) - (+r.expenses || 0); });
+    const by = {};
+    for (const r of dayRows) { const o = (by[dayKey(r.at)] ||= { pc: 0, food: 0, topup: 0, ticket: 0, other: 0, expense: 0 }); o[catOf(r)] += +r.amount; }
+    return { keys, by };
+  }
+  function renderDaily() {
+    const { keys, by } = last30();
+    const net = keys.map((k) => { const r = by[k] || {}; return CATS.reduce((s, c) => s + (r[c.key] || 0), 0) - (r.expense || 0); });
     const done = net.slice(0, -1).filter((v) => v > 0);
     $("dailyAvg").textContent = done.length ? `avg ${money(done.reduce((a, b) => a + b, 0) / done.length)} net per day` : "";
     $("dailyLegend").innerHTML = legendHtml([...CATS.map((c) => [c.label, css(c.v)]), ["Net (after expenses)", css("--ink")]]);
     chart("dailyChart", { data: { labels: keys.map((k) => fmtDay(k)), datasets: [
-      ...CATS.map((c) => barDS(c.label, keys.map((k) => +((by[k] || {})[f[c.key]]) || 0), css(c.v))),
+      ...CATS.map((c) => barDS(c.label, keys.map((k) => (by[k] || {})[c.key] || 0), css(c.v))),
       { type: "line", label: "Net", data: net, borderColor: css("--ink"), backgroundColor: css("--ink"), borderWidth: 1.5, pointRadius: 0, pointHoverRadius: 4, tension: .3, stack: "net" },
     ] }, options: baseOpts({ plugins: { ...baseOpts().plugins, tooltip: { ...baseOpts().plugins.tooltip, callbacks: {
       title: (it) => fmtDay(keys[it[0].dataIndex], { weekday: "long", month: "short", day: "numeric" }),
@@ -793,14 +805,18 @@ tbody tr:hover td { background: var(--surface-2); }
   function renderHeat() {
     const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
     const grid = days.map(() => new Array(24).fill(0)); const seen = new Set();
-    for (const r of heatRows) { const l = local(r.at); const d = (l.getUTCDay() + 6) % 7; grid[d][l.getUTCHours()] += +r.amount; seen.add(dayKey(r.at)); }
+    const since = nowMs() - 28 * 86400000;
+    for (const r of dayRows) {
+      if (r.kind !== 1 || r.is_expense || new Date(r.at).getTime() < since) continue;
+      const l = biz(r.at); grid[(l.getUTCDay() + 6) % 7][l.getUTCHours()] += +r.amount; seen.add(dayKey(r.at));
+    }
     const weeks = Math.max(1, seen.size / 7);
     const max = Math.max(...grid.flat(), 1);
     const steps = ["--seq-0", "--seq-1", "--seq-2", "--seq-3", "--seq-4", "--seq-5"];
     const step = (v) => v <= 0 ? 0 : Math.min(5, 1 + Math.floor(v / max * 4.999));
-    let h = '<div></div>' + Array.from({ length: 24 }, (_, i) => `<div class="h">${String(i).padStart(2, "0")}</div>`).join("");
+    let h = '<div></div>' + Array.from({ length: 24 }, (_, i) => `<div class="h">${slotLabel(i, "")}</div>`).join("");
     days.forEach((d, di) => {
-      h += `<div class="d">${d}</div>` + grid[di].map((v, hi) => `<div class="c" style="background:var(${steps[step(v)]})" title="${d} ${String(hi).padStart(2, "0")}:00 · avg ${money(v / weeks)} PC income"></div>`).join("");
+      h += `<div class="d">${d}</div>` + grid[di].map((v, hi) => `<div class="c" style="background:var(${steps[step(v)]})" title="${d} ${slotLabel(hi)} · avg ${money(v / weeks)} PC income"></div>`).join("");
     });
     $("heat").innerHTML = h;
     $("heatScale").innerHTML = `<span>Quiet</span>${steps.map((s) => `<i style="background:var(${s})"></i>`).join("")}<span>Busy</span><span style="margin-left:auto">busiest hour averages ${money(max / weeks)}</span>`;
@@ -862,7 +878,7 @@ tbody tr:hover td { background: var(--surface-2); }
     const p = period();
     $("salesSub").textContent = p.days > 1 ? `${p.label.toLowerCase()}, per day` : `${p.label.toLowerCase()}, per hour`;
     let labels;
-    if (p.days <= 1) labels = Array.from({ length: 24 }, (_, h) => String(h).padStart(2, "0") + ":00");
+    if (p.days <= 1) labels = Array.from({ length: 24 }, (_, h) => slotLabel(h));
     else { labels = []; for (let t = p.start.getTime(); t < p.end.getTime(); t += 86400000) labels.push(fmtDay(dayKey(t))); }
     $("salesLegend").innerHTML = legendHtml([...CATS.map((c) => [c.label, css(c.v)]), ["Expenses", css("--bad")]]);
     chart("salesChart", { data: { labels, datasets: [
@@ -891,8 +907,8 @@ tbody tr:hover td { background: var(--surface-2); }
     chart("prodChart", { type: "bar", data: { labels: top.map((x) => x[0]), datasets: [barDS("Sales", top.map((x) => x[1].total), css("--s2"), { borderWidth: 0, borderSkipped: "start" })] },
       options: baseOpts({ indexAxis: "y", plugins: { legend: { display: false }, tooltip: { ...baseOpts().plugins.tooltip, callbacks: { label: (c) => ` ${money(c.parsed.x)} · ${top[c.dataIndex][1].qty} sold` } } },
         scales: { x: { ...baseOpts().scales.y, stacked: false }, y: { ...baseOpts().scales.x, stacked: false, ticks: { ...baseOpts().scales.x.ticks, font: { family: "IBM Plex Sans", size: 12 } } } } }) });
-    const hrs = new Array(24).fill(0); for (const m of moves) if (m.direction === 1) hrs[local(m.at).getUTCHours()] += +m.total;
-    chart("prodHourChart", { type: "bar", data: { labels: hrs.map((_, h) => String(h).padStart(2, "0")), datasets: [barDS("Food & drinks", hrs, css("--s2"))] }, options: baseOpts() });
+    const hrs = new Array(24).fill(0); for (const m of moves) if (m.direction === 1) hrs[slot(m.at)] += +m.total;
+    chart("prodHourChart", { type: "bar", data: { labels: hrs.map((_, h) => slotLabel(h, "")), datasets: [barDS("Food & drinks", hrs, css("--s2"))] }, options: baseOpts() });
     const sold = Object.fromEntries(Object.entries(by));
     $("prodTable").innerHTML = [...products].sort((a, b) => ((sold[b.name] || {}).total || 0) - ((sold[a.name] || {}).total || 0) || a.name.localeCompare(b.name))
       .map((x) => { const s = sold[x.name] || { qty: 0, total: 0 }; return `<tr><td>${esc(x.name)}</td><td class="r num">${money(x.price)}</td><td class="r num">${s.qty || "–"}</td>
@@ -926,9 +942,8 @@ tbody tr:hover td { background: var(--surface-2); }
     $("memKpis").innerHTML = [["Members", members.length, `${active} active accounts`], ["Prepaid balance held", money(owed), "money members can still spend"],
       ["Visited in 30 days", recent, `${members.length ? Math.round(recent / members.length * 100) : 0}% of members`], ["Online now", online, "logged in on a PC"]]
       .map(([l, v, s]) => `<div class="card kpi"><div class="lbl">${l}</div><div class="val">${v}</div><span class="delta flat"><small>${s}</small></span></div>`).join("");
-    const by = Object.fromEntries(daily.map((d) => [String(d.day).slice(0, 10), +d.topups || 0]));
-    const today = dayKey(nowMs()); const keys = []; for (let i = 29; i >= 0; i--) keys.push(new Date(new Date(today + "T00:00:00Z").getTime() - i * 86400000).toISOString().slice(0, 10));
-    chart("topupChart", { data: { labels: keys.map((k) => fmtDay(k)), datasets: [barDS("Top-ups", keys.map((k) => by[k] || 0), css("--s3"))] }, options: baseOpts() });
+    const { keys, by } = last30();
+    chart("topupChart", { data: { labels: keys.map((k) => fmtDay(k)), datasets: [barDS("Top-ups", keys.map((k) => (by[k] || {}).topup || 0), css("--s3"))] }, options: baseOpts() });
     const top = [...members].sort((a, b) => b.balance - a.balance).slice(0, 8);
     chart("balChart", { type: "bar", data: { labels: top.map((m) => m.username), datasets: [barDS("Balance", top.map((m) => +m.balance), css("--s3"), { borderWidth: 0, borderSkipped: "start" })] },
       options: baseOpts({ indexAxis: "y", plugins: { legend: { display: false }, tooltip: { ...baseOpts().plugins.tooltip, callbacks: { label: (c) => ` ${money(c.parsed.x, 2)}` } } },
@@ -955,7 +970,7 @@ tbody tr:hover td { background: var(--surface-2); }
   function renderView() {
     const p = period();
     $("viewTitle").firstChild.textContent = TITLES[view];
-    $("viewSub").textContent = view === "members" ? "all time" : `${p.label} · ${local(p.start).toISOString().slice(0, 10) === local(new Date(p.end - 1)).toISOString().slice(0, 10) ? fmtDay(dayKey(p.start), { weekday: "long", month: "long", day: "numeric" }) : fmtDay(dayKey(p.start)) + " – " + fmtDay(dayKey(p.end - 1))}`;
+    $("viewSub").textContent = view === "members" ? "all time" : `${p.label} · ${dayKey(p.start) === dayKey(p.end - 1) ? fmtDay(dayKey(p.start), { weekday: "long", month: "long", day: "numeric" }) : fmtDay(dayKey(p.start)) + " – " + fmtDay(dayKey(p.end - 1))} · days run ${clock(DAY_H)} to ${clock(DAY_H)}`;
     document.querySelectorAll("[data-view]").forEach((s) => { s.hidden = s.dataset.view !== view; });
     $("rangeSeg").parentElement.querySelector(".seg").hidden = view === "members";
     if (view === "overview") { renderKpis(); renderOcc(); renderHourly(); renderDaily(); renderMix(); renderHeat(); renderFeed(); }
@@ -984,7 +999,9 @@ tbody tr:hover td { background: var(--surface-2); }
         if (view === "pcs") renderFloor(); if (view === "overview") renderOcc();
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "pancafe_cash" }, (e) => {
-        if (e.eventType === "DELETE" || !inWin(e.new.at, period().start, period().end)) return;
+        if (e.eventType === "DELETE") return;
+        const j = dayRows.findIndex((r) => r.id === e.new.id); if (j >= 0) dayRows[j] = e.new; else dayRows.push(e.new);
+        if (!inWin(e.new.at, period().start, period().end)) return;
         const i = cash.findIndex((r) => r.id === e.new.id); if (i >= 0) cash[i] = e.new; else cash.push(e.new);
         if (view === "overview") { renderKpis(); renderHourly(); renderMix(); renderFeed(e.new.id); }
         else if (view === "sales" || view === "staff") renderView();
