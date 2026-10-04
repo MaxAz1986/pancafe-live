@@ -254,6 +254,13 @@ tbody tr:hover td { background: var(--surface-2); }
 .feed { max-height: 380px; overflow-y: auto; }
 .feed td { font-size: 13px; }
 .feed .note { font-size: 11px; color: var(--ink-3); }
+.feed tr.excl td { opacity: .55; }
+.feed .num { white-space: nowrap; }
+.feed tr.excl .num { text-decoration: line-through; }
+.tag.off { background: var(--surface-2); color: var(--ink-3); border: 1px dashed var(--line); }
+.xbtn { margin-left: 6px; padding: 1px 7px; font-size: 10.5px; font-weight: 600; border-radius: 999px; border: 1px solid var(--line); background: var(--surface-2); color: var(--ink-3); cursor: pointer; opacity: .55; }
+.xbtn:hover, .xbtn:focus-visible { opacity: 1; color: var(--ink); }
+.feed tr.excl .xbtn { opacity: 1; }
 .new td { animation: flash 2.5s ease-out; }
 @keyframes flash { from { background: var(--accent-soft); } to { background: transparent; } }
 @media (prefers-reduced-motion: reduce) { .new td, .pill.good i { animation: none; } }
@@ -419,7 +426,7 @@ tbody tr:hover td { background: var(--surface-2); }
             <div class="heat-scale" id="heatScale"></div>
           </div>
           <div class="card c5">
-            <div class="card-h"><h2>Live transactions</h2><span class="right">newest first</span></div>
+            <div class="card-h"><h2>Live transactions</h2><span class="right" id="feedSub">newest first</span></div>
             <div class="tbl-wrap feed"><table><tbody id="feed"></tbody></table></div>
           </div>
         </div>
@@ -641,7 +648,7 @@ tbody tr:hover td { background: var(--surface-2); }
   const inWin = (t, a, b) => { const x = new Date(t).getTime(); return x >= a.getTime() && x < b.getTime(); };
 
   // ---------- state ----------
-  let cash = [], prevCash = [], sessions = [], moves = [], terminals = [], members = [], products = [], dayRows = [], posItems = [], posAllItems = [], posSales = [], posReady = false, agent = null;
+  let cash = [], prevCash = [], sessions = [], moves = [], terminals = [], members = [], products = [], dayRows = [], posItems = [], posAllItems = [], posSales = [], posReady = false, agent = null, exclRows = [];
 
   async function loadPeriod() {
     const p = period();
@@ -658,13 +665,26 @@ tbody tr:hover td { background: var(--surface-2); }
     posSales = pos.sales.filter((r) => inWin(r.at, p.start, p.end));
     posItems = pos.items.filter((r) => inWin(r.at, p.start, p.end));
     posAllItems = pos.allItems.filter((r) => inWin(r.at, p.start, p.end));
-    both = both.filter(keepRow).concat(pos.rows);
+    const raw = both.filter((r) => !(posReady && r.kind === 2)).concat(pos.rows);
+    exclRows = raw.filter((r) => isExcl(r) && inWin(r.at, p.start, p.end));
+    both = raw.filter((r) => !isExcl(r));
     cash = both.filter((r) => inWin(r.at, p.start, p.end));
     prevCash = both.filter((r) => inWin(r.at, p.prevStart, p.prevEnd));
   }
   // ---------- POS (sales from the shop's POS app) ----------
   // POS rows are turned into the same shape as PanCafe's cash rows, so every chart and total includes them.
-  const keepRow = (r) => !(posReady && r.kind === 2); // PanCafe's own food sales are replaced by the POS
+  const keepRow = (r) => !(posReady && r.kind === 2) && !isExcl(r); // PanCafe's own food sales are replaced by the POS
+
+  // ---------- excluded rows ----------
+  // Rows the owner leaves out of every total (pancafe_excluded). PanCafe's own records are not touched.
+  let excluded = new Map(), exclReady = false;
+  const isExcl = (r) => excluded.has(String(r.id));
+  async function loadExcluded() {
+    try {
+      const rows = await q("pancafe_excluded", (t) => t.select("*"));
+      excluded = new Map(rows.map((x) => [String(x.row_id), x])); exclReady = true;
+    } catch (err) { excluded = new Map(); exclReady = false; } // table not set up yet: show everything as before
+  }
   const posCounts = (s) => s.status === "Completed" && s.credit_paid !== false;
   const posRow = (s) => ({ id: "s" + s.id, at: s.at, kind: "pos", is_expense: false, amount: s.total, admin_name: s.cashier, note: [s.payment_type, s.store].filter(Boolean).join(" · "), pos: s });
   const posRetRow = (r) => ({ id: "r" + r.id, at: r.at, kind: "posret", is_expense: false, amount: -r.amount, admin_name: "", note: "Refund on POS sale #" + r.sale_id });
@@ -694,7 +714,7 @@ tbody tr:hover td { background: var(--surface-2); }
         (r) => r.filter((x) => new Date(x.at) >= new Date(since))),
       loadPos(since, new Date(nowMs() + 86400000).toISOString()),
     ]);
-    dayRows = dayRows.filter(keepRow).concat(pos.rows);
+    dayRows = dayRows.filter(keepRow).concat(pos.rows.filter((r) => !isExcl(r)));
 
     const a = await q("pancafe_agent_status", all); agent = a[0] || null;
   }
@@ -877,10 +897,15 @@ tbody tr:hover td { background: var(--surface-2); }
   }
 
   function renderFeed(hl) {
-    const rows = [...cash].sort((a, b) => new Date(b.at) - new Date(a.at)).slice(0, 40);
-    $("feed").innerHTML = rows.map((r) => { const k = catOf(r);
-      return `<tr class="${r.id === hl ? "new" : ""}"><td class="mono muted" style="width:52px">${hhmm(r.at)}</td>
+    const rows = [...cash, ...exclRows].sort((a, b) => new Date(b.at) - new Date(a.at)).slice(0, 40);
+    const canX = exclReady && !demo;
+    const xAmt = exclRows.reduce((t, r) => t + Math.abs(+r.amount), 0);
+    $("feedSub").textContent = exclRows.length ? `newest first · ${exclRows.length} excluded (${money(xAmt, 2)} not counted)` : "newest first";
+    $("feed").innerHTML = rows.map((r) => { const k = catOf(r), off = isExcl(r), x = excluded.get(String(r.id));
+      return `<tr class="${r.id === hl ? "new" : ""}${off ? " excl" : ""}"><td class="mono muted" style="width:52px">${hhmm(r.at)}</td>
       <td><span class="tag ${r.is_expense ? "exp" : ""}">${r.is_expense ? "" : `<i style="background:${catColor(k)}"></i>`}${esc(r.is_expense ? (KIND[r.kind] === "Refund" ? "Refund" : r.kind === "posexp" ? "POS expense" : "Expense") : (KIND[r.kind] || "Type " + r.kind))}</span>
+        ${off ? `<span class="tag off" title="${esc([x.note, x.excluded_by].filter(Boolean).join(" · "))}">Excluded</span>` : ""}
+        ${canX ? `<button type="button" class="xbtn" data-x="${esc(String(r.id))}" data-on="${off ? 1 : 0}">${off ? "Include again" : "Exclude"}</button>` : ""}
         <div class="note">${esc((r.note || "").replace(/^Money deposited to member account\.\s*/, "Top-up "))}${r.admin_name ? " · " + esc(r.admin_name) : ""}</div></td>
       <td class="r num">${r.is_expense || r.amount < 0 ? "−" : ""}${money(Math.abs(r.amount), 2)}</td></tr>`; }).join("")
       || '<tr><td class="empty">No transactions in this period yet.</td></tr>';
@@ -1107,12 +1132,31 @@ tbody tr:hover td { background: var(--surface-2); }
         if (view === "overview") renderKpis(); if (view === "pcs") renderPcCharts();
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "pancafe_agent_status" }, (e) => { agent = e.new; renderAgent(); })
+      .on("postgres_changes", { event: "*", schema: "public", table: "pancafe_excluded" }, () => refresh(true))
       .subscribe();
   }
 
   // ---------- boot ----------
+  $("feed").addEventListener("click", async (e) => {
+    const b = e.target.closest("button[data-x]"); if (!b || !sb) return;
+    const id = b.dataset.x;
+    if (b.dataset.on === "1") {
+      if (!confirm("Count this transaction in the totals again?")) return;
+      b.disabled = true;
+      const { error } = await sb.from("pancafe_excluded").delete().eq("row_id", id);
+      if (error) { alert("Couldn't include it again: " + error.message); b.disabled = false; return; }
+    } else {
+      const note = prompt("Leave this transaction out of all totals?\nPanCafe's own record stays as it is.\n\nReason (optional):", "");
+      if (note === null) return;
+      b.disabled = true;
+      const { error } = await sb.from("pancafe_excluded").insert({ row_id: id, note: note.trim() || null });
+      if (error) { alert("Couldn't exclude it: " + error.message); b.disabled = false; return; }
+    }
+    refresh(true);
+  });
+
   async function refresh(full) {
-    try { if (full) await loadStatic(); await loadPeriod(); renderView(); }
+    try { await loadExcluded(); if (full) await loadStatic(); await loadPeriod(); renderView(); }
     catch (err) { $("syncPill").className = "pill bad"; $("syncPill").innerHTML = "<i></i>Can't load data: " + esc(err.message || err); }
   }
   async function start(session) {
