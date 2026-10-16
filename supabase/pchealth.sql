@@ -15,6 +15,9 @@ create table if not exists public.pchealth_pcs (
   now        jsonb,                     -- latest reading: load, temperatures, GPU power, fan, throttling, running app
   disks      jsonb                      -- drive health, wear, temperature, free space
 );
+-- The black box (last ~6 minutes of 10-second readings), refreshed every 20 s. Diskless PCs lose
+-- their local copy when they restart, so this one is moved to pchealth_lastmoments on the next start.
+alter table public.pchealth_pcs add column if not exists box jsonb;
 
 -- One row per PC per minute: average load and highest temperature in that minute. Kept 7 days.
 create table if not exists public.pchealth_samples (
@@ -28,9 +31,17 @@ create index if not exists pchealth_samples_at on public.pchealth_samples (at);
 create table if not exists public.pchealth_events (
   pc text not null, log text not null, record_id bigint not null,
   at timestamptz not null, provider text, event_id int, level int, kind text, message text, data jsonb,
-  primary key (pc, log, record_id)
+  primary key (pc, log, record_id, at)
 );
 create index if not exists pchealth_events_at on public.pchealth_events (at);
+-- Diskless PCs start from the same image every time, so record numbers repeat: the time is part of the key.
+do $$ begin
+  if (select count(*) from pg_index i join pg_attribute a on a.attrelid = i.indrelid and a.attnum = any(i.indkey)
+      where i.indrelid = 'public.pchealth_events'::regclass and i.indisprimary) < 4 then
+    alter table public.pchealth_events drop constraint pchealth_events_pkey;
+    alter table public.pchealth_events add primary key (pc, log, record_id, at);
+  end if;
+end $$;
 
 -- The "black box": the last ~6 minutes of 10-second readings before each time a PC went off.
 create table if not exists public.pchealth_lastmoments (
@@ -67,6 +78,10 @@ create or replace function public.pchealth_ingest(p_token text, p_payload jsonb)
 returns jsonb language plpgsql security definer set search_path = '' as $$
 declare
   v_pc text := upper(trim(p_payload->>'pc'));
+  v_boot timestamptz := (p_payload->>'boot_at')::timestamptz;
+  v_box jsonb := case when jsonb_typeof(p_payload->'box'->'samples') = 'array'
+                       and jsonb_array_length(p_payload->'box'->'samples') <= 120 then p_payload->'box' end;
+  old record;
   n jsonb := '{}'::jsonb; c int;
 begin
   if not exists (select 1 from public.pchealth_agent_tokens
@@ -77,12 +92,37 @@ begin
     raise exception 'missing pc name';
   end if;
 
-  insert into public.pchealth_pcs (pc, host, version, last_seen, boot_at, info, now, disks)
+  -- The agent's own copy of the last moments before the previous shutdown (PCs with their own disk).
+  if jsonb_typeof(p_payload->'lastmoments') = 'array' then
+    delete from public.pchealth_lastmoments m using jsonb_to_recordset(p_payload->'lastmoments') as x(next_boot_at timestamptz)
+     where m.pc = v_pc and m.next_boot_at = x.next_boot_at;
+    insert into public.pchealth_lastmoments (pc, ended_at, boot_at, next_boot_at, samples)
+    select v_pc, x.ended_at, x.boot_at, x.next_boot_at, x.samples
+    from (select * from jsonb_to_recordset(p_payload->'lastmoments')
+            as x(ended_at timestamptz, boot_at timestamptz, next_boot_at timestamptz, samples jsonb)
+          limit 20) x
+    where x.ended_at is not null
+    on conflict (pc, ended_at) do nothing;
+  end if;
+
+  -- The PC restarted since its last report: keep the black box from before the restart.
+  select boot_at, box into old from public.pchealth_pcs where pc = v_pc;
+  if found and old.box is not null and v_boot is not null and old.boot_at is distinct from v_boot
+     and jsonb_array_length(coalesce(old.box->'samples', '[]')) > 0
+     and v_boot > ((old.box->'samples'->-1)->>'t')::timestamptz - interval '2 minutes'
+     and not exists (select 1 from public.pchealth_lastmoments where pc = v_pc and next_boot_at = v_boot) then
+    insert into public.pchealth_lastmoments (pc, ended_at, boot_at, next_boot_at, samples)
+    values (v_pc, ((old.box->'samples'->-1)->>'t')::timestamptz, old.boot_at, v_boot, old.box->'samples')
+    on conflict (pc, ended_at) do nothing;
+  end if;
+
+  insert into public.pchealth_pcs (pc, host, version, last_seen, boot_at, info, now, disks, box)
   values (v_pc, left(p_payload->>'host', 64), left(p_payload->>'version', 16), now(),
-          (p_payload->>'boot_at')::timestamptz, p_payload->'info', p_payload->'now', p_payload->'disks')
+          v_boot, p_payload->'info', p_payload->'now', p_payload->'disks', v_box)
   on conflict (pc) do update set host = excluded.host, version = excluded.version, last_seen = now(),
     boot_at = excluded.boot_at, now = coalesce(excluded.now, pchealth_pcs.now),
-    info = coalesce(excluded.info, pchealth_pcs.info), disks = coalesce(excluded.disks, pchealth_pcs.disks);
+    info = coalesce(excluded.info, pchealth_pcs.info), disks = coalesce(excluded.disks, pchealth_pcs.disks),
+    box = coalesce(excluded.box, pchealth_pcs.box);
 
   if jsonb_typeof(p_payload->'samples') = 'array' then
     insert into public.pchealth_samples (pc, at, cpu, gpu, ram, cpu_temp, gpu_temp, gpu_power, app)
@@ -104,18 +144,8 @@ begin
             as x(log text, record_id bigint, at timestamptz, provider text, event_id int, level int, kind text, message text, data jsonb)
           limit 1000) x
     where x.record_id is not null and x.at is not null
-    on conflict (pc, log, record_id) do nothing;
+    on conflict (pc, log, record_id, at) do nothing;
     get diagnostics c = row_count; n := n || jsonb_build_object('events', c);
-  end if;
-
-  if jsonb_typeof(p_payload->'lastmoments') = 'array' then
-    insert into public.pchealth_lastmoments (pc, ended_at, boot_at, next_boot_at, samples)
-    select v_pc, x.ended_at, x.boot_at, x.next_boot_at, x.samples
-    from (select * from jsonb_to_recordset(p_payload->'lastmoments')
-            as x(ended_at timestamptz, boot_at timestamptz, next_boot_at timestamptz, samples jsonb)
-          limit 20) x
-    where x.ended_at is not null
-    on conflict (pc, ended_at) do nothing;
   end if;
 
   -- Housekeeping now and then: keep 7 days of minute readings and 180 days of events.

@@ -96,6 +96,15 @@ window.PCHealth = (() => {
         out.push({ pc, kind: code ? "bsod" : button ? "button" : "power", at: wentOff || group[0].at, foundAt: group[0].at, wentOff, code, lm, ev: k41 || bs || group[0], events: group });
       }
     }
+    // A restart with no Windows record of why (diskless PCs start from a clean image, so Windows can't
+    // log the crash or power loss): the black box shows the PC simply stopped, with no normal shutdown.
+    const usedLm = new Set(out.map((i) => i.lm).filter(Boolean));
+    for (const m of lastm) {
+      if (usedLm.has(m) || !m.ended_at) continue;
+      const planned = events.some((e) => e.pc === m.pc && e.kind === "planned_shutdown" && Math.abs(t(e.at) - t(m.ended_at)) < 3 * MIN);
+      if (planned) continue;
+      out.push({ pc: m.pc, kind: "power", at: m.ended_at, foundAt: m.next_boot_at || m.ended_at, wentOff: m.ended_at, code: 0, lm: m, ev: null, events: [], noRecord: true });
+    }
     // power cuts that hit several PCs at once
     const power = out.filter((i) => i.kind === "power" && i.wentOff);
     for (const i of power) i.together = power.filter((o) => o !== i && Math.abs(t(o.wentOff) - t(i.wentOff)) < 3 * MIN).map((o) => o.pc);
@@ -153,7 +162,7 @@ window.PCHealth = (() => {
       advice = gpuR.length ? "Reinstall the graphics driver and check GPU temperature and power cables." : "If it keeps freezing, check the temperatures and events below.";
       level = "warn";
     } else {
-      what = "Lost power suddenly" + (gaming ? ` during ${m.app ? esc(m.app) : "a game"}` : "");
+      what = (i.noRecord ? "Went off without shutting down" : "Lost power suddenly") + (gaming ? ` during ${m.app ? esc(m.app) : "a game"}` : "");
       if (i.together?.length >= 2) {
         cause = `Power cut or tripped breaker: ${i.together.join(", ")} went off within the same few minutes.`;
         advice = "Check the circuit breaker, outlets and UPS for that row of PCs. Not a fault in this PC."; conf = "very likely";
@@ -178,6 +187,7 @@ window.PCHealth = (() => {
       }
     }
     if (i.kind !== "planned" && !i.wentOff) ev.push(`Noticed when Windows started again at ${when(i.foundAt)}`);
+    if (i.noRecord) { ev.push(`Started again at ${when(i.foundAt)}`); ev.push("Windows kept no record of why (normal on diskless PCs), so a blue screen can't be ruled out"); }
     Object.assign(i, { what, cause, advice, level, conf, evidence: ev, gaming });
   }
 
@@ -296,7 +306,7 @@ window.PCHealth = (() => {
     const plannedHidden = incidents.filter((i) => i.kind === "planned" && !i.gaming).length;
     const incRow = (i) => `<tr class="ph-inc" data-pc="${esc(i.pc)}">
         <td class="mono muted nowrap">${esc(when(i.at))}</td><td><b>${esc(i.pc)}</b></td>
-        <td>${chip(i.level === "ok" ? "ok" : i.level, i.kind === "planned" ? "On purpose" : i.kind === "bsod" ? "Crash" : i.kind === "button" ? "Forced off" : "Power lost")} ${i.what}</td>
+        <td>${chip(i.level === "ok" ? "ok" : i.level, i.kind === "planned" ? "On purpose" : i.kind === "bsod" ? "Crash" : i.kind === "button" ? "Forced off" : i.noRecord ? "Went off" : "Power lost")} ${i.what}</td>
         <td><div>${i.cause}</div><div class="ph-adv">${esc(i.advice)}</div>${i.evidence.length ? `<ul class="ph-evi">${i.evidence.map((x) => `<li>${x}</li>`).join("")}</ul>` : ""}<div class="ph-conf">${esc(confText(i.conf))}</div></td></tr>`;
 
     root.innerHTML = `
