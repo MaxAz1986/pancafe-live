@@ -364,6 +364,7 @@ tbody tr:hover td { background: var(--surface-2); }
       <button type="button" data-v="products"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 7h12l-1 10H5L4 7Z"/><path d="M7 7V5a3 3 0 0 1 6 0v2"/></svg>Food &amp; drinks</button>
       <button type="button" data-v="staff"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="10" cy="7" r="3.5"/><path d="M3.5 17c1-3.5 3.6-5 6.5-5s5.5 1.5 6.5 5"/></svg>Staff</button>
       <button type="button" data-v="members"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2.5" y="4" width="15" height="12" rx="2"/><circle cx="7.5" cy="9.5" r="2"/><path d="M11.5 8.5h3.5M11.5 11.5h3.5"/></svg>Members</button>
+      <button type="button" data-v="health"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M2 10.5h3.5l2-4.5 3 8 2-5.5 1.5 2H18"/></svg>PC health</button>
     </nav>
     <div class="rail-foot">
       <div class="who" id="who"></div>
@@ -554,10 +555,14 @@ tbody tr:hover td { background: var(--surface-2); }
           </div>
         </div>
       </section>
+
+      <!-- PC HEALTH (pchealth.js) -->
+      <section data-view="health" hidden><div id="healthRoot"></div></section>
     </div>
   </div>
 </div>
 
+<script src="pchealth.js"></script>
 <script>
 (() => {
   const CFG = window.PANCAFE_CONFIG || {};
@@ -1080,14 +1085,15 @@ tbody tr:hover td { background: var(--surface-2); }
   }
 
   // ---------- views ----------
-  const TITLES = { overview: "Overview", pcs: "PCs", sales: "Sales", products: "Food & drinks", staff: "Staff", members: "Members" };
+  const TITLES = { overview: "Overview", pcs: "PCs", sales: "Sales", products: "Food & drinks", staff: "Staff", members: "Members", health: "PC health" };
   function renderView() {
     const p = period();
     $("viewTitle").firstChild.textContent = TITLES[view];
-    $("viewSub").textContent = view === "members" ? "all time" : `${p.label} · ${dayKey(p.start) === dayKey(p.end - 1) ? fmtDay(dayKey(p.start), { weekday: "long", month: "long", day: "numeric" }) : fmtDay(dayKey(p.start)) + " – " + fmtDay(dayKey(p.end - 1))} · days run ${clock(DAY_H)} to ${clock(DAY_H)}`;
+    $("viewSub").textContent = view === "members" ? "all time" : view === "health" ? "customer PCs · live" : `${p.label} · ${dayKey(p.start) === dayKey(p.end - 1) ? fmtDay(dayKey(p.start), { weekday: "long", month: "long", day: "numeric" }) : fmtDay(dayKey(p.start)) + " – " + fmtDay(dayKey(p.end - 1))} · days run ${clock(DAY_H)} to ${clock(DAY_H)}`;
     const shown = view === "products" && posReady ? "pos" : view;
     document.querySelectorAll("[data-view]").forEach((s) => { s.hidden = s.dataset.view !== shown; });
-    $("rangeSeg").parentElement.querySelector(".seg").hidden = view === "members";
+    $("rangeSeg").parentElement.querySelector(".seg").hidden = view === "members" || view === "health";
+    $("customBox").hidden = range !== "custom" || view === "members" || view === "health";
     if (view === "overview") { renderKpis(); renderOcc(); renderHourly(); renderDaily(); renderMix(); renderHeat(); renderFeed(); }
     if (view === "pcs") { renderFloor(); renderPcCharts(); }
     if (view === "sales") renderSales();
@@ -1095,6 +1101,7 @@ tbody tr:hover td { background: var(--surface-2); }
     if (shown === "pos") renderPos();
     if (view === "staff") renderStaff();
     if (view === "members") renderMembers();
+    if (view === "health" && window.PCHealth) window.PCHealth.render();
     renderAgent();
   }
   function setView(v) {
@@ -1159,6 +1166,7 @@ tbody tr:hover td { background: var(--surface-2); }
     try { await loadExcluded(); if (full) await loadStatic(); await loadPeriod(); renderView(); }
     catch (err) { $("syncPill").className = "pill bad"; $("syncPill").innerHTML = "<i></i>Can't load data: " + esc(err.message || err); }
   }
+  if (window.PCHealth) window.PCHealth.init({ sb, demo, q, esc, css, chart, baseOpts, local, hhmm, fmtDay, nowMs, terminals: () => terminals });
   async function start(session) {
     $("login").hidden = true; $("app").hidden = false;
     $("who").textContent = session?.user?.email || (demo ? "Preview" : "");
