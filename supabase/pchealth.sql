@@ -159,3 +159,36 @@ begin
 end $$;
 revoke all on function public.pchealth_ingest(text, jsonb) from public, authenticated;
 grant execute on function public.pchealth_ingest(text, jsonb) to anon;
+
+-- PanCafe's own log of each PC's client starting ("on") and closing ("off"), sent by the PanCafe Bridge.
+-- PanCafe only writes "off" when a PC shuts down or restarts normally, so a missing "off" means a crash or power loss.
+create table if not exists public.pancafe_pc_log (
+  pc text not null, at timestamptz not null, event text not null,
+  primary key (pc, at, event)
+);
+create index if not exists pancafe_pc_log_at on public.pancafe_pc_log (at);
+alter table public.pancafe_pc_log enable row level security;
+drop policy if exists viewer_read on public.pancafe_pc_log;
+create policy viewer_read on public.pancafe_pc_log for select to authenticated using ((select public.pancafe_is_viewer()));
+revoke all on public.pancafe_pc_log from anon;
+grant select on public.pancafe_pc_log to authenticated;
+
+create or replace function public.pancafe_ingest_pclog(p_token text, p_rows jsonb)
+returns int language plpgsql security definer set search_path = '' as $$
+declare c int;
+begin
+  if not exists (select 1 from public.pancafe_agent_tokens
+                 where token_hash = encode(extensions.digest(p_token, 'sha256'), 'hex')) then
+    raise exception 'invalid agent token' using errcode = '28000';
+  end if;
+  insert into public.pancafe_pc_log (pc, at, event)
+  select upper(left(x.pc, 32)), x.at, x.event
+  from (select * from jsonb_to_recordset(p_rows) as x(pc text, at timestamptz, event text) limit 2000) x
+  where x.pc is not null and x.at is not null and x.event in ('on', 'off')
+  on conflict do nothing;
+  get diagnostics c = row_count;
+  if random() < 0.01 then delete from public.pancafe_pc_log where at < now() - interval '180 days'; end if;
+  return c;
+end $$;
+revoke all on function public.pancafe_ingest_pclog(text, jsonb) from public, authenticated;
+grant execute on function public.pancafe_ingest_pclog(text, jsonb) to anon;

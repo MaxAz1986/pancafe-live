@@ -3,7 +3,7 @@
 // index.html calls PCHealth.init(ctx) once and PCHealth.render() whenever the page is shown.
 window.PCHealth = (() => {
   let X = null;                 // helpers from index.html
-  let pcs = [], events = [], lastm = [], sessions = [], loadedAt = 0, selected = null, showAll = false, timer = 0;
+  let pcs = [], events = [], lastm = [], sessions = [], pclog = [], loadedAt = 0, selected = null, showAll = false, timer = 0;
   const DAY = 86400000, MIN = 60000;
   const ONLINE_MS = 150000;     // the agent reports every 30 s
 
@@ -51,6 +51,10 @@ window.PCHealth = (() => {
   const deg = (v) => v == null ? "–" : Math.round(v) + "°C";
   const pct = (v) => v == null ? "–" : Math.round(v) + "%";
   const mbps = (v) => v == null ? "–" : (v < 10 ? (Math.round(v * 10) / 10) : Math.round(v)) + "";
+  // PanCafe's style: 23.24 Kbps, 7.88 Mbps; 710.67 MB, 3.00 GB
+  const spd = (mb) => mb == null ? "–" : mb < 1 ? (mb * 1000).toFixed(2) + " Kbps" : mb.toFixed(2) + " Mbps";
+  const spdS = (mb) => mb == null ? "–" : mb < 1 ? Math.round(mb * 1000) + " Kbps" : (mb < 10 ? mb.toFixed(1) : Math.round(mb)) + " Mbps";
+  const vol = (b) => b == null ? "–" : b < 1e9 ? (b / 1048576).toFixed(2) + " MB" : (b / 1073741824).toFixed(2) + " GB";
   const ms = (v) => v == null ? "–" : Math.round(v) + " ms";
   const ago = (ms) => ms < 90000 ? "just now" : ms < 3600000 ? Math.round(ms / MIN) + " min ago" : ms < 2 * DAY ? Math.round(ms / 3600000) + " h ago" : Math.round(ms / DAY) + " days ago";
   const dur = (ms) => ms < 3600000 ? Math.round(ms / MIN) + " min" : ms < 2 * DAY ? Math.floor(ms / 3600000) + " h " + Math.round(ms % 3600000 / MIN) + " min" : Math.round(ms / DAY) + " days";
@@ -110,6 +114,7 @@ window.PCHealth = (() => {
     // power cuts that hit several PCs at once
     const power = out.filter((i) => i.kind === "power" && i.wentOff);
     for (const i of power) i.together = power.filter((o) => o !== i && Math.abs(t(o.wentOff) - t(i.wentOff)) < 3 * MIN).map((o) => o.pc);
+    for (const i of out) fromPcLog(i);
     for (const i of out) fromPanCafe(i, out);
     for (const i of out) diagnose(i);
     return out.sort((a, b) => t(b.at) - t(a.at));
@@ -118,8 +123,21 @@ window.PCHealth = (() => {
   // The server turns PCs off when a customer's time ends. Those shutdowns often leave no Windows
   // record, so PanCafe's own sessions decide: a PC that went off quietly, with no customer on it and
   // nothing heavy running, was turned off on purpose.
+  // PanCafe logs "off" when a PC's client closes because Windows is shutting down or restarting
+  // normally. A crash or power loss never gets one: the PC just shows up again with a new "on".
+  // So where PanCafe's log covers the time, it settles diskless shutdowns that Windows didn't record.
+  function fromPcLog(i) {
+    if (i.kind !== "power" || !i.noRecord || !pclog.length) return;
+    const T = t(i.wentOff || i.at), mine = pclog.filter((x) => pcName(x.pc) === i.pc);
+    if (!mine.some((x) => Math.abs(t(x.at) - T) < 12 * 3600000)) return;   // log doesn't cover this time
+    const off = mine.find((x) => x.event === "off" && Math.abs(t(x.at) - T) <= 2 * MIN);
+    if (!off) { i.unclean = true; return; }
+    const T2 = t(off.at), ended = sessions.filter((s) => pcName(s.terminal_name) === i.pc && t(s.end_at) <= T2 + MIN && T2 - t(s.end_at) <= 20 * MIN).sort((a, b) => t(b.end_at) - t(a.end_at))[0];
+    i.kind = "planned"; i.pancafe = { clean: off.at, end: ended ? ended.end_at : null };
+  }
+
   function fromPanCafe(i, out) {
-    if (i.kind !== "power" || !sessions.length) return;       // a held power button stays "forced off"
+    if (i.kind !== "power" || i.unclean || !sessions.length) return;       // a held power button stays "forced off"
     const T = t(i.wentOff || i.at), mine = sessions.filter((s) => pcName(s.terminal_name) === i.pc);
     // several PCs went off together and one of them was in use: that is a power cut, not the server
     const group = (i.together || []).map((pc) => out.find((o) => o.pc === pc && o.together && o.together.includes(i.pc))).filter(Boolean);
@@ -162,7 +180,14 @@ window.PCHealth = (() => {
     const hot = m && ((m.ct != null && m.ct >= 95) || (m.gt != null && m.gt >= 90));
     let what, cause, advice, level = "bad", conf = "likely";
 
-    if (i.kind === "planned" && i.pancafe) {
+    if (i.kind === "planned" && i.pancafe && i.pancafe.clean) {
+      const game = gaming ? ` while ${m.app ? esc(m.app) : "a game"} was running` : "";
+      what = (i.pancafe.end ? "Turned off after use" : "Shut down normally") + game;
+      cause = `PanCafe recorded the PC closing normally at ${X.hhmm(i.pancafe.clean)}, so Windows shut down properly (from the PanCafe server, staff or the customer), not a crash.` +
+        (i.pancafe.end ? ` The customer's session ended at ${X.hhmm(i.pancafe.end)}.` : "");
+      advice = gaming && !i.pancafe.end ? "Not a fault. If a customer says they were kicked off mid-game, check who sent the shut-down." : "Not a fault.";
+      level = "ok"; conf = "pancafe";
+    } else if (i.kind === "planned" && i.pancafe) {
       what = "Turned off after use";
       cause = i.pancafe.end ? `The customer's PanCafe session ended at ${X.hhmm(i.pancafe.end)} and the PC was turned off soon after, with nothing heavy running.` : "Nobody was using it in PanCafe and nothing heavy was running, so staff or PanCafe most likely turned it off.";
       advice = "Not a fault."; level = "ok"; conf = "pancafe";
@@ -215,7 +240,9 @@ window.PCHealth = (() => {
       }
     }
     if (i.kind !== "planned" && !i.wentOff) ev.push(`Noticed when Windows started again at ${when(i.foundAt)}`);
-    if (i.pancafe) ev.push(i.pancafe.end ? `PanCafe session ended at ${when(i.pancafe.end)}` : "No PanCafe session on this PC at the time");
+    if (i.pancafe?.clean) ev.push(`PanCafe log: closed normally at ${when(i.pancafe.clean)}`);
+    else if (i.pancafe) ev.push(i.pancafe.end ? `PanCafe session ended at ${when(i.pancafe.end)}` : "No PanCafe session on this PC at the time");
+    if (i.unclean) ev.push("PanCafe log: the PC dropped off without closing, which happens with a crash or power loss, not a normal shutdown");
     if (i.noRecord && !i.pancafe) { ev.push(`Started again at ${when(i.foundAt)}`); ev.push("Windows kept no record of why (normal on diskless PCs), so a blue screen can't be ruled out"); }
     Object.assign(i, { what, cause, advice, level, conf, evidence: ev, gaming });
   }
@@ -264,13 +291,14 @@ window.PCHealth = (() => {
     const since = new Date(X.nowMs() - 30 * DAY).toISOString();
     if (X.demo) {
       const d = await (await fetch("demo-health.json")).json();
-      [pcs, events, lastm, sessions] = [d.pchealth_pcs || [], d.pchealth_events || [], d.pchealth_lastmoments || [], d.pancafe_sessions || []];
+      [pcs, events, lastm, sessions, pclog] = [d.pchealth_pcs || [], d.pchealth_events || [], d.pchealth_lastmoments || [], d.pancafe_sessions || [], d.pancafe_pc_log || []];
     } else {
-      [pcs, events, lastm, sessions] = await Promise.all([
+      [pcs, events, lastm, sessions, pclog] = await Promise.all([
         X.q("pchealth_pcs", (q) => q.select("*")),
         X.q("pchealth_events", (q) => q.select("pc,log,record_id,at,provider,event_id,kind,message,data").gte("at", since).order("at")),
         X.q("pchealth_lastmoments", (q) => q.select("*").gte("ended_at", since).order("ended_at")),
         X.q("pancafe_sessions", (q) => q.select("id,terminal_name,start_at,end_at").gte("end_at", since).order("id")).catch(() => []),
+        X.q("pancafe_pc_log", (q) => q.select("pc,at,event").gte("at", since).order("at")).catch(() => []),
       ]);
     }
     loadedAt = Date.now();
@@ -337,7 +365,8 @@ window.PCHealth = (() => {
           <span>CPU</span><b>${pct(n.cpu)}</b><b class="${tc(n.cpu_temp, 80, 90)}">${deg(n.cpu_temp)}</b>
           <span>GPU</span><b>${pct(n.gpu)}</b><b class="${tc(n.gpu_temp, 80, 88)}">${deg(n.gpu_temp)}</b>
           <span>RAM</span><b>${pct(n.ram)}</b><b></b>
-          ${n.net && !n.net.error ? `<span>NET</span><b class="ph-net" title="Traffic now, Mbps down / up">↓${mbps(n.net.down)} ↑${mbps(n.net.up)}</b><b class="${tc(n.net.ping, 100, 150)}" title="Ping to the internet">${n.net.ping_blocked ? "–" : ms(n.net.ping)}</b>` : ""}</div>
+          ${n.net && !n.net.error ? `<span>UP</span><b class="ph-net" title="Upload speed now">${spdS(num(n.net.up))}</b><b class="${tc(n.net.ping, 100, 150)}" title="Ping to the internet">${n.net.ping_blocked ? "–" : ms(n.net.ping)}</b>
+          <span>DOWN</span><b class="ph-net" title="Download speed now">${spdS(num(n.net.down))}</b><b></b>` : ""}</div>
           <div class="ph-ex">${appName(n.app) ? esc(appName(n.app)) + " · " : ""}up ${dur(X.nowMs() - t(r.p.boot_at))}</div>`
         : `<div class="ph-off">Off or not reporting since ${esc(ago(X.nowMs() - t(r.p.last_seen)))}</div>`;
       const issue = r.iss[0] ? `<div class="ph-iss ${r.iss[0].level}">${esc(r.iss[0].text)}${r.iss.length > 1 ? ` <small>+${r.iss.length - 1}</small>` : ""}</div>` : "";
@@ -371,7 +400,7 @@ window.PCHealth = (() => {
     if (selected) drawDetail(rows.find((r) => r.name === selected), incidents);
   }
   const tc = (v, w, b) => v == null ? "muted" : v >= b ? "ph-bad" : v >= w ? "ph-warn" : "";
-  const confText = (c) => ({ certain: "Windows recorded this directly.", "very likely": "Very likely, from what several PCs recorded.", likely: "Most likely cause, from the readings just before.", possible: "Possible cause; the readings don't point at one part.", unknown: "Not enough readings to tell.", pancafe: "Matched with PanCafe's session records." }[c] || "");
+  const confText = (c) => ({ certain: "Windows recorded this directly.", "very likely": "Very likely, from what several PCs recorded.", likely: "Most likely cause, from the readings just before.", possible: "Possible cause; the readings don't point at one part.", unknown: "Not enough readings to tell.", pancafe: "Matched with PanCafe's records." }[c] || "");
 
   // Repeat offenders: a PC that keeps going off for the same reason.
   function patternsHtml(incidents) {
@@ -401,10 +430,11 @@ window.PCHealth = (() => {
     if (x.error) return `<p class="ph-adv">No network connection.</p>`;
     const rows = [["Internet ping", x.ping_blocked ? "no answer (ping may be blocked)" : `${ms(x.ping)}${x.loss != null ? ` · ${pct(x.loss)} lost in the last 5 min` : ""}`],
       ["Router ping", x.router_ping != null ? ms(x.router_ping) : "no answer"],
-      ["Traffic now", `${mbps(x.down)} Mbps down · ${mbps(x.up)} Mbps up (on diskless PCs this includes Windows itself)`],
+      ["Upload speed", spd(num(x.up))], ["Download speed", spd(num(x.down))],
+      ["Total UL / DL", `${vol(num(x.total_up))} / ${vol(num(x.total_down))} since the PC started`],
       ["Speed test", x.test_down != null ? `${mbps(x.test_down)} Mbps download · ${ago(X.nowMs() - t(x.test_at))}` : x.test_error ? "failed: " + x.test_error : "not run yet (runs every 30 min when no game is on)"],
       ["Network card", `${x.adapter || ""}${x.link ? ` · connected at ${x.link >= 1000 ? x.link / 1000 + " Gbps" : x.link + " Mbps"}` : ""}`]];
-    return `<dl class="ph-dl">${rows.map(([k, v]) => `<dt>${k}</dt><dd>${esc(v)}</dd>`).join("")}</dl>`;
+    return `<dl class="ph-dl">${rows.map(([k, v]) => `<dt>${k}</dt><dd>${esc(v)}</dd>`).join("")}</dl><p class="ph-adv">On diskless PCs the speeds and totals include Windows loading from the server.</p>`;
   }
 
   async function drawDetail(r, incidents) {
