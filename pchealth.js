@@ -3,7 +3,7 @@
 // index.html calls PCHealth.init(ctx) once and PCHealth.render() whenever the page is shown.
 window.PCHealth = (() => {
   let X = null;                 // helpers from index.html
-  let pcs = [], events = [], lastm = [], loadedAt = 0, selected = null, showAll = false, timer = 0;
+  let pcs = [], events = [], lastm = [], sessions = [], loadedAt = 0, selected = null, showAll = false, timer = 0;
   const DAY = 86400000, MIN = 60000;
   const ONLINE_MS = 150000;     // the agent reports every 30 s
 
@@ -108,8 +108,30 @@ window.PCHealth = (() => {
     // power cuts that hit several PCs at once
     const power = out.filter((i) => i.kind === "power" && i.wentOff);
     for (const i of power) i.together = power.filter((o) => o !== i && Math.abs(t(o.wentOff) - t(i.wentOff)) < 3 * MIN).map((o) => o.pc);
+    for (const i of out) fromPanCafe(i, out);
     for (const i of out) diagnose(i);
     return out.sort((a, b) => t(b.at) - t(a.at));
+  }
+
+  // The server turns PCs off when a customer's time ends. Those shutdowns often leave no Windows
+  // record, so PanCafe's own sessions decide: a PC that went off quietly, with no customer on it and
+  // nothing heavy running, was turned off on purpose.
+  function fromPanCafe(i, out) {
+    if (i.kind !== "power" || !sessions.length) return;       // a held power button stays "forced off"
+    const T = t(i.wentOff || i.at), mine = sessions.filter((s) => pcName(s.terminal_name) === i.pc);
+    // several PCs went off together and one of them was in use: that is a power cut, not the server
+    const group = (i.together || []).map((pc) => out.find((o) => o.pc === pc && o.together && o.together.includes(i.pc))).filter(Boolean);
+    if (inUse(i, T) || group.some((o) => inUse(o, t(o.wentOff || o.at)))) return;
+    const ended = mine.filter((s) => t(s.end_at) <= T + MIN && T - t(s.end_at) <= 20 * MIN).sort((a, b) => t(b.end_at) - t(a.end_at))[0];
+    i.kind = "planned"; i.pancafe = ended ? { end: ended.end_at } : { idle: true };
+  }
+  const pcName = (n) => { n = String(n || "").trim().toUpperCase(); const m = n.match(/^PC[-_ ]?0*(\d{1,3})$/); return m ? "PC" + m[1].padStart(2, "0") : n; };
+  function inUse(i, T) {
+    const m = lastMinute(i.lm);
+    if (m && m.gpu != null && m.gpu >= 60) return true;       // a game was running
+    if (sessions.some((s) => pcName(s.terminal_name) === i.pc && t(s.start_at) < T - MIN && t(s.end_at) > T + MIN)) return true;
+    const now = (X.terminals() || []).find((x) => pcName(x.name) === i.pc);
+    return !!(now && now.status !== 1 && now.status !== 0 && now.start_at && t(now.start_at) < T - MIN);   // session still open
   }
 
   // What the black box shows for the last minute before the PC went off.
@@ -138,7 +160,11 @@ window.PCHealth = (() => {
     const hot = m && ((m.ct != null && m.ct >= 95) || (m.gt != null && m.gt >= 90));
     let what, cause, advice, level = "bad", conf = "likely";
 
-    if (i.kind === "planned") {
+    if (i.kind === "planned" && i.pancafe) {
+      what = "Turned off after use";
+      cause = i.pancafe.end ? `The customer's PanCafe session ended at ${X.hhmm(i.pancafe.end)} and the PC was turned off soon after, with nothing heavy running.` : "Nobody was using it in PanCafe and nothing heavy was running, so staff or PanCafe most likely turned it off.";
+      advice = "Not a fault."; level = "ok"; conf = "pancafe";
+    } else if (i.kind === "planned") {
       const d = i.ev.data || {}, proc = String(d.param1 || d.p0 || ""), user = String(d.param7 || d.p6 || ""), reason = String(d.param3 || d.p2 || "");
       const base = proc.split("\\").pop().replace(/\s*\(.*$/, "");
       what = "Shut down on purpose" + (gaming ? ` while ${m.app ? esc(m.app) : "a game"} was running` : "");
@@ -187,7 +213,8 @@ window.PCHealth = (() => {
       }
     }
     if (i.kind !== "planned" && !i.wentOff) ev.push(`Noticed when Windows started again at ${when(i.foundAt)}`);
-    if (i.noRecord) { ev.push(`Started again at ${when(i.foundAt)}`); ev.push("Windows kept no record of why (normal on diskless PCs), so a blue screen can't be ruled out"); }
+    if (i.pancafe) ev.push(i.pancafe.end ? `PanCafe session ended at ${when(i.pancafe.end)}` : "No PanCafe session on this PC at the time");
+    if (i.noRecord && !i.pancafe) { ev.push(`Started again at ${when(i.foundAt)}`); ev.push("Windows kept no record of why (normal on diskless PCs), so a blue screen can't be ruled out"); }
     Object.assign(i, { what, cause, advice, level, conf, evidence: ev, gaming });
   }
 
@@ -229,12 +256,13 @@ window.PCHealth = (() => {
     const since = new Date(X.nowMs() - 30 * DAY).toISOString();
     if (X.demo) {
       const d = await (await fetch("demo-health.json")).json();
-      [pcs, events, lastm] = [d.pchealth_pcs || [], d.pchealth_events || [], d.pchealth_lastmoments || []];
+      [pcs, events, lastm, sessions] = [d.pchealth_pcs || [], d.pchealth_events || [], d.pchealth_lastmoments || [], d.pancafe_sessions || []];
     } else {
-      [pcs, events, lastm] = await Promise.all([
+      [pcs, events, lastm, sessions] = await Promise.all([
         X.q("pchealth_pcs", (q) => q.select("*")),
         X.q("pchealth_events", (q) => q.select("pc,log,record_id,at,provider,event_id,kind,message,data").gte("at", since).order("at")),
         X.q("pchealth_lastmoments", (q) => q.select("*").gte("ended_at", since).order("ended_at")),
+        X.q("pancafe_sessions", (q) => q.select("id,terminal_name,start_at,end_at").gte("end_at", since).order("id")).catch(() => []),
       ]);
     }
     loadedAt = Date.now();
@@ -329,7 +357,7 @@ window.PCHealth = (() => {
     if (selected) drawDetail(rows.find((r) => r.name === selected), incidents);
   }
   const tc = (v, w, b) => v == null ? "muted" : v >= b ? "ph-bad" : v >= w ? "ph-warn" : "";
-  const confText = (c) => ({ certain: "Windows recorded this directly.", "very likely": "Very likely, from what several PCs recorded.", likely: "Most likely cause, from the readings just before.", possible: "Possible cause; the readings don't point at one part.", unknown: "Not enough readings to tell." }[c] || "");
+  const confText = (c) => ({ certain: "Windows recorded this directly.", "very likely": "Very likely, from what several PCs recorded.", likely: "Most likely cause, from the readings just before.", possible: "Possible cause; the readings don't point at one part.", unknown: "Not enough readings to tell.", pancafe: "Matched with PanCafe's session records." }[c] || "");
 
   // Repeat offenders: a PC that keeps going off for the same reason.
   function patternsHtml(incidents) {
