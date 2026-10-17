@@ -432,7 +432,7 @@ window.PCHealth = (() => {
       ["Router ping", x.router_ping != null ? ms(x.router_ping) : "no answer"],
       ["Upload speed", spd(num(x.up))], ["Download speed", spd(num(x.down))],
       ["Total UL / DL", `${vol(num(x.total_up))} / ${vol(num(x.total_down))} since the PC started`],
-      ["Speed test", x.test_down != null ? `${mbps(x.test_down)} Mbps download · ${ago(X.nowMs() - t(x.test_at))}` : x.test_error ? "failed: " + x.test_error : "not run yet (runs about every 3 hours when no game is on)"],
+      ...(x.test_down != null || x.test_error ? [["Speed test", x.test_down != null ? `${mbps(x.test_down)} Mbps download · ${ago(X.nowMs() - t(x.test_at))}` : "failed: " + x.test_error]] : []),
       ["Network card", `${x.adapter || ""}${x.link ? ` · connected at ${x.link >= 1000 ? x.link / 1000 + " Gbps" : x.link + " Mbps"}` : ""}`]];
     return `<dl class="ph-dl">${rows.map(([k, v]) => `<dt>${k}</dt><dd>${esc(v)}</dd>`).join("")}</dl><p class="ph-adv">On diskless PCs the speeds and totals include Windows loading from the server.</p>`;
   }
