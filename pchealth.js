@@ -50,6 +50,8 @@ window.PCHealth = (() => {
   const num = (v) => v === null || v === undefined || v === "" ? null : Number(v);
   const deg = (v) => v == null ? "–" : Math.round(v) + "°C";
   const pct = (v) => v == null ? "–" : Math.round(v) + "%";
+  const mbps = (v) => v == null ? "–" : (v < 10 ? (Math.round(v * 10) / 10) : Math.round(v)) + "";
+  const ms = (v) => v == null ? "–" : Math.round(v) + " ms";
   const ago = (ms) => ms < 90000 ? "just now" : ms < 3600000 ? Math.round(ms / MIN) + " min ago" : ms < 2 * DAY ? Math.round(ms / 3600000) + " h ago" : Math.round(ms / DAY) + " days ago";
   const dur = (ms) => ms < 3600000 ? Math.round(ms / MIN) + " min" : ms < 2 * DAY ? Math.floor(ms / 3600000) + " h " + Math.round(ms % 3600000 / MIN) + " min" : Math.round(ms / DAY) + " days";
   const when = (d) => { const l = X.local(d); return X.fmtDay(l.toISOString().slice(0, 10), { weekday: "short", month: "short", day: "numeric" }) + " " + X.hhmm(d); };
@@ -229,6 +231,12 @@ window.PCHealth = (() => {
       if (thr.some((x) => /hot/.test(x))) add("bad", "Graphics card is slowing itself down because it is too hot");
       if (thr.includes("power brake")) add("warn", "Graphics card power brake is on (power supply signal)");
       if (num(n.ram) >= 92) add("warn", `Memory almost full: ${pct(n.ram)}`);
+      const net = n.net || {};
+      if (net.error) add("warn", "No network connection");
+      if (num(net.loss) >= 20) add("bad", `Internet dropping out: ${pct(net.loss)} of pings lost in the last 5 minutes`); else if (num(net.loss) >= 5) add("warn", `Internet unsteady: ${pct(net.loss)} of pings lost in the last 5 minutes`);
+      if (num(net.ping) >= 150) add("warn", `Slow internet: ping ${ms(net.ping)}`);
+      if (num(net.router_ping) >= 20) add("warn", `Slow link to the router: ${ms(net.router_ping)} (check the cable and switch)`);
+      if (num(net.link) > 0 && num(net.link) <= 100) add("warn", `Network card connected at only ${net.link} Mbps: check the cable and switch port`);
     }
     const d = p.disks || {};
     for (const x of d.physical || []) {
@@ -310,11 +318,16 @@ window.PCHealth = (() => {
     const wk = X.nowMs() - 7 * DAY, unexpected = incidents.filter((i) => i.kind !== "planned" && t(i.at) >= wk);
     const hottest = on.map((r) => ({ r, v: Math.max(num(r.p.now?.gpu_temp) ?? -1, num(r.p.now?.cpu_temp) ?? -1) })).sort((a, b) => b.v - a.v)[0];
 
+    const nets = on.map((r) => r.p.now?.net || {});
+    const med = (a) => { a = a.filter((v) => v != null).sort((x, y) => x - y); return a.length ? a[Math.floor(a.length / 2)] : null; };
+    const pingMed = med(nets.map((x) => num(x.ping))), testMed = med(nets.map((x) => num(x.test_down)));
+    const worstPing = on.map((r) => ({ r, v: num(r.p.now?.net?.ping) })).filter((x) => x.v != null).sort((a, b) => b.v - a.v)[0];
     const kpis = [
       { lbl: "PCs reporting", val: `${on.length}<small> / ${names.length}</small>`, sub: reporting.length < names.length ? `${names.length - reporting.length} without the health agent` : "all PCs have the agent" },
       { lbl: "Need a look", val: attention.length, sub: attention.slice(0, 4).map((r) => r.name).join(", ") || "nothing to fix", lv: attention.some((r) => r.hw === "bad") ? "bad" : attention.length ? "warn" : null },
       { lbl: "Unexpected shutdowns", val: unexpected.length, sub: "last 7 days" + (unexpected.length ? " · " + [...new Set(unexpected.map((i) => i.pc))].sort(nameSort).slice(0, 4).join(", ") : ""), lv: unexpected.length ? "warn" : null },
       { lbl: "Hottest right now", val: hottest && hottest.v >= 0 ? deg(hottest.v) : "–", sub: hottest && hottest.v >= 0 ? hottest.r.name + (appName(hottest.r.p.now?.app) ? " · " + esc(appName(hottest.r.p.now.app)) : "") : "no temperature readings yet" },
+      { lbl: "Internet ping", val: pingMed != null ? ms(pingMed) : "–", sub: pingMed == null ? "no network readings yet" : `typical${testMed != null ? ` · download ${mbps(testMed)} Mbps` : ""}${worstPing && worstPing.v >= 2 * pingMed && worstPing.v >= 60 ? ` · worst ${worstPing.r.name} ${ms(worstPing.v)}` : ""}`, lv: pingMed != null && pingMed >= 150 ? "warn" : null },
     ];
 
     const tile = (r) => {
@@ -323,7 +336,8 @@ window.PCHealth = (() => {
       const body = isOn ? `<div class="ph-rows">
           <span>CPU</span><b>${pct(n.cpu)}</b><b class="${tc(n.cpu_temp, 80, 90)}">${deg(n.cpu_temp)}</b>
           <span>GPU</span><b>${pct(n.gpu)}</b><b class="${tc(n.gpu_temp, 80, 88)}">${deg(n.gpu_temp)}</b>
-          <span>RAM</span><b>${pct(n.ram)}</b><b></b></div>
+          <span>RAM</span><b>${pct(n.ram)}</b><b></b>
+          ${n.net && !n.net.error ? `<span>NET</span><b class="ph-net" title="Traffic now, Mbps down / up">↓${mbps(n.net.down)} ↑${mbps(n.net.up)}</b><b class="${tc(n.net.ping, 100, 150)}" title="Ping to the internet">${n.net.ping_blocked ? "–" : ms(n.net.ping)}</b>` : ""}</div>
           <div class="ph-ex">${appName(n.app) ? esc(appName(n.app)) + " · " : ""}up ${dur(X.nowMs() - t(r.p.boot_at))}</div>`
         : `<div class="ph-off">Off or not reporting since ${esc(ago(X.nowMs() - t(r.p.last_seen)))}</div>`;
       const issue = r.iss[0] ? `<div class="ph-iss ${r.iss[0].level}">${esc(r.iss[0].text)}${r.iss.length > 1 ? ` <small>+${r.iss.length - 1}</small>` : ""}</div>` : "";
@@ -338,7 +352,7 @@ window.PCHealth = (() => {
         <td><div>${i.cause}</div><div class="ph-adv">${esc(i.advice)}</div>${i.evidence.length ? `<ul class="ph-evi">${i.evidence.map((x) => `<li>${x}</li>`).join("")}</ul>` : ""}<div class="ph-conf">${esc(confText(i.conf))}</div></td></tr>`;
 
     root.innerHTML = `
-      <div class="kpis" style="--kpi-n:4">${kpis.map((k) => `<div class="card kpi"><div class="lbl">${k.lv ? `<i style="background:${LV[k.lv][1]}"></i>` : ""}${k.lbl}</div><div class="val">${k.val}</div><div class="ph-sub">${k.sub}</div></div>`).join("")}</div>
+      <div class="kpis" style="--kpi-n:5">${kpis.map((k) => `<div class="card kpi"><div class="lbl">${k.lv ? `<i style="background:${LV[k.lv][1]}"></i>` : ""}${k.lbl}</div><div class="val">${k.val}</div><div class="ph-sub">${k.sub}</div></div>`).join("")}</div>
       <div class="card" style="margin-top:16px">
         <div class="card-h"><h2>Customer PCs right now</h2><span class="sub">tap a PC for details · updates every 30 s</span></div>
         <div class="ph-grid" id="phGrid">${rows.map(tile).join("") || '<div class="empty">No PCs yet.</div>'}</div>
@@ -381,6 +395,18 @@ window.PCHealth = (() => {
     if (selected) document.getElementById("phDetail")?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
+  function netHtml(x, on) {
+    if (!x) return `<p class="ph-adv">No network readings yet. They come with agent 1.2.0.</p>`;
+    if (!on) return `<p class="ph-adv">Not reporting right now.</p>`;
+    if (x.error) return `<p class="ph-adv">No network connection.</p>`;
+    const rows = [["Internet ping", x.ping_blocked ? "no answer (ping may be blocked)" : `${ms(x.ping)}${x.loss != null ? ` · ${pct(x.loss)} lost in the last 5 min` : ""}`],
+      ["Router ping", x.router_ping != null ? ms(x.router_ping) : "no answer"],
+      ["Traffic now", `${mbps(x.down)} Mbps down · ${mbps(x.up)} Mbps up (on diskless PCs this includes Windows itself)`],
+      ["Speed test", x.test_down != null ? `${mbps(x.test_down)} Mbps download · ${ago(X.nowMs() - t(x.test_at))}` : x.test_error ? "failed: " + x.test_error : "not run yet (runs every 30 min when no game is on)"],
+      ["Network card", `${x.adapter || ""}${x.link ? ` · connected at ${x.link >= 1000 ? x.link / 1000 + " Gbps" : x.link + " Mbps"}` : ""}`]];
+    return `<dl class="ph-dl">${rows.map(([k, v]) => `<dt>${k}</dt><dd>${esc(v)}</dd>`).join("")}</dl>`;
+  }
+
   async function drawDetail(r, incidents) {
     const el = document.getElementById("phDetail"); if (!el || !r) return;
     if (!r.p) {
@@ -401,6 +427,7 @@ window.PCHealth = (() => {
         <div class="c6"><h3 class="ph-h3">Load, last 24 hours</h3><div class="chart-box"><canvas id="phLoad"></canvas></div></div>
         <div class="c6"><h3 class="ph-h3">Hardware</h3><dl class="ph-dl">${hw.map(([k, v]) => `<dt>${k}</dt><dd>${esc(v)}</dd>`).join("")}</dl></div>
         <div class="c6"><h3 class="ph-h3">Drives</h3>${disksHtml(d)}</div>
+        <div class="c6"><h3 class="ph-h3">Network</h3>${netHtml(n.net, online(p))}</div>
         <div class="c12"><h3 class="ph-h3">Windows log, last 30 days</h3><div class="tbl-wrap ph-log"><table><tbody>${evs.map((e) => `<tr><td class="mono muted nowrap">${esc(when(e.at))}</td><td>${esc(eventText(e))}</td></tr>`).join("") || '<tr><td class="empty">Nothing unusual recorded.</td></tr>'}</tbody></table></div></div>
       </div></div>`;
     document.getElementById("phClose").onclick = () => select(p.pc);
@@ -452,7 +479,8 @@ window.PCHealth = (() => {
     .ph-chip { font-size: 10px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; padding: 2px 6px; border-radius: 4px; white-space: nowrap; }
     .ph-rows { display: grid; grid-template-columns: auto 1fr auto; gap: 0 10px; font-size: 12px; align-items: baseline; }
     .ph-rows span { color: var(--ink-3); font-weight: 600; font-size: 11px; }
-    .ph-rows b { font: 600 14px var(--f-num); font-variant-numeric: tabular-nums; text-align: right; }
+    .ph-rows b { font: 600 14px var(--f-num); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+    .ph-rows b.ph-net { font-size: 12px; white-space: nowrap; }
     .ph-warn { color: var(--warn); } .ph-bad { color: var(--bad); }
     .ph-ex, .ph-off { font-size: 11px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .ph-off { margin-top: auto; white-space: normal; }
