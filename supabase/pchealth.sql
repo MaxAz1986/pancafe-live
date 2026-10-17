@@ -148,11 +148,11 @@ begin
     get diagnostics c = row_count; n := n || jsonb_build_object('events', c);
   end if;
 
-  -- Housekeeping now and then: keep 7 days of minute readings and 180 days of events.
+  -- Housekeeping now and then: keep 7 days of minute readings, 30 days of black boxes and 180 days of events.
   if random() < 0.003 then
     delete from public.pchealth_samples where at < now() - interval '7 days';
     delete from public.pchealth_events where at < now() - interval '180 days';
-    delete from public.pchealth_lastmoments where ended_at < now() - interval '180 days';
+    delete from public.pchealth_lastmoments where ended_at < now() - interval '30 days';
   end if;
 
   return n;
