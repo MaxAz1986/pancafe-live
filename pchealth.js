@@ -475,11 +475,11 @@ window.PCHealth = (() => {
       const box = document.getElementById("phTemp")?.parentElement, i = p.info || {};
       if (box) box.outerHTML = `<p class="ph-adv">This PC isn't sending temperatures.
         ${i.gpu_sensor ? "" : "GPU: the agent couldn't find NVIDIA's nvidia-smi tool (it comes with the NVIDIA driver; agent 1.2.1 also looks in the driver store). AMD and Intel graphics aren't read yet."}
-        CPU: Windows has no built-in CPU temperature sensor, so this only works where the motherboard reports one or LibreHardwareMonitor is running. PanCafe shows N/A for CPU temperature too.</p>`;
+        CPU: Windows has no built-in CPU temperature sensor, so this only works where the motherboard reports one or Core Temp (or LibreHardwareMonitor) is running. PanCafe shows N/A for CPU temperature too.</p>`;
     } else X.chart("phTemp", { data: { labels, datasets: [line("CPU °C", s.map((x) => x.cpu_temp), X.css("--s2")), line("GPU °C", s.map((x) => x.gpu_temp), X.css("--s1"))] }, options: opts("°", undefined) });
     X.chart("phLoad", { data: { labels, datasets: [line("CPU", s.map((x) => x.cpu), X.css("--s2")), line("GPU", s.map((x) => x.gpu), X.css("--s1")), line("RAM", s.map((x) => x.ram), X.css("--s5"), true)] }, options: opts("%", 100) });
   }
-  const tempSrc = (src, gpu) => [src === "LibreHardwareMonitor" || src === "OpenHardwareMonitor" ? "CPU temperature from " + src : src === "acpi" ? "CPU temperature from the motherboard (approximate)" : "No CPU temperature sensor (install LibreHardwareMonitor to add one)", gpu ? "GPU from " + gpu : ""].filter(Boolean).join(" · ");
+  const tempSrc = (src, gpu) => [src === "LibreHardwareMonitor" || src === "OpenHardwareMonitor" ? "CPU temperature from " + src : src === "coretemp" ? "CPU temperature from Core Temp" : src === "acpi" ? "CPU temperature from the motherboard (approximate)" : "No CPU temperature sensor (run Core Temp to add one)", gpu ? "GPU from " + gpu : ""].filter(Boolean).join(" · ");
   function disksHtml(d) {
     const ph = d.physical || [], vol = d.volumes || [];
     if (!ph.length && !vol.length) return '<p class="ph-adv">No drive readings yet.</p>';
