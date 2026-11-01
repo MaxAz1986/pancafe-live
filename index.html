@@ -260,6 +260,13 @@ tbody tr:hover td { background: var(--surface-2); }
 .tag.src { background: transparent; border: 1px solid var(--line); color: var(--ink-3); font-weight: 500; }
 .tag.src.nethub { border-color: var(--accent); color: var(--accent); }
 .kpi .split { font-size: 11px; color: var(--ink-3); margin-top: 1px; font-variant-numeric: tabular-nums; }
+.ds { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; }
+.ds label { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink-2); }
+.ds input[type=date] { padding: 5px 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface-2); }
+.ds .btn { padding: 7px 14px; font-size: 13px; }
+.ds .seg button:disabled, .ds input:disabled { cursor: not-allowed; opacity: .6; }
+.ds .seg button[aria-pressed="true"]:disabled { opacity: 1; }
+.ds-note { margin: 10px 0 0; font-size: 12.5px; color: var(--ink-3); }
 .tag.off { background: var(--surface-2); color: var(--ink-3); border: 1px dashed var(--line); }
 .xbtn { margin-left: 6px; padding: 1px 7px; font-size: 10.5px; font-weight: 600; border-radius: 999px; border: 1px solid var(--line); background: var(--surface-2); color: var(--ink-3); cursor: pointer; opacity: .55; }
 .xbtn:hover, .xbtn:focus-visible { opacity: 1; color: var(--ink); }
@@ -417,6 +424,18 @@ tbody tr:hover td { background: var(--surface-2); }
       <section data-view="overview">
         <div class="kpis" id="kpis"></div>
         <div class="grid" style="margin-top:16px">
+          <div class="card c12" id="dsCard" hidden>
+            <div class="card-h"><h2>Data source</h2><span class="sub">where PC time and member top-ups are counted from</span><span class="right" id="dsBy"></span></div>
+            <div class="ds">
+              <div class="seg" role="group" aria-label="PC time and top-ups source" id="dsSeg">
+                <button type="button" data-ds="pancafe" aria-pressed="true">PanCafe</button>
+                <button type="button" data-ds="nethub" aria-pressed="false">Net Hub</button>
+              </div>
+              <label id="dsFromBox">from the cafe day of <input type="date" id="dsFrom"></label>
+              <button type="button" class="btn ghost" id="dsLock">Unlock</button>
+            </div>
+            <p class="ds-note" id="dsNote"></p>
+          </div>
           <div class="card c12" id="srcCard" hidden>
             <div class="card-h"><h2>Income by source</h2><span class="sub" id="srcSub"></span><span class="right" id="srcSync"></span></div>
             <div class="tbl-wrap"><table><thead><tr><th>Source</th><th class="r">PC time</th><th class="r">Food &amp; drinks</th><th class="r">Member top-ups</th><th class="r">Other</th><th class="r">Total income</th><th>Share</th></tr></thead><tbody id="srcTable"></tbody></table></div>
@@ -684,6 +703,25 @@ tbody tr:hover td { background: var(--surface-2); }
   // ---------- state ----------
   let cash = [], prevCash = [], sessions = [], moves = [], terminals = [], members = [], products = [], dayRows = [], posItems = [], posAllItems = [], posSales = [], posReady = false, agent = null, exclRows = [], cashAll = [], nhReady = false, nhStatus = null;
 
+  // ---------- data source for PC time and member top-ups (pancafe_settings) ----------
+  // Only one source counts at a time, so the same money is never added twice. Before the chosen
+  // start date PanCafe's numbers stay; from it, only the chosen source counts. Food & drinks are not affected.
+  const DS_DEFAULT = { pc_source: "pancafe", pc_source_from: null, locked: true };
+  let dsSet = DS_DEFAULT, dsReady = false, dsDraft = null, ignored = [];
+  async function loadSettings() {
+    try { const r = await q("pancafe_settings", (t) => t.select("*")); dsReady = !demo; dsSet = r[0] || DS_DEFAULT; }
+    catch (err) { dsReady = false; dsSet = DS_DEFAULT; } // table not set up yet: count PanCafe
+    if (dsSet.locked) dsDraft = null;
+  }
+  const isPcTop = (r) => !r.is_expense && [1, 4, "nh_time", "nh_topup"].includes(r.kind);
+  function counted(r) {
+    if (!isPcTop(r)) return true;
+    const nh = String(r.kind).startsWith("nh_");
+    if (dsSet.pc_source !== "nethub" || !dsSet.pc_source_from) return !nh;
+    const after = new Date(r.at) >= new Date(dsSet.pc_source_from);
+    return nh ? after : !after;
+  }
+
   async function loadPeriod() {
     const p = period();
     const s = p.start.toISOString(), e = p.end.toISOString(), ps = p.prevStart.toISOString();
@@ -699,7 +737,9 @@ tbody tr:hover td { background: var(--surface-2); }
     posSales = pos.sales.filter((r) => inWin(r.at, p.start, p.end));
     posItems = pos.items.filter((r) => inWin(r.at, p.start, p.end));
     posAllItems = pos.allItems.filter((r) => inWin(r.at, p.start, p.end));
-    const raw = both.filter((r) => !(posReady && r.kind === 2)).concat(pos.rows, nh);
+    let raw = both.filter((r) => !(posReady && r.kind === 2)).concat(pos.rows, nh);
+    ignored = raw.filter((r) => !counted(r) && !isExcl(r) && inWin(r.at, p.start, p.end));
+    raw = raw.filter(counted);
     exclRows = raw.filter((r) => isExcl(r) && srcOk(r) && inWin(r.at, p.start, p.end));
     both = raw.filter((r) => !isExcl(r));
     cashAll = both.filter((r) => inWin(r.at, p.start, p.end));   // every source, for the "Income by source" table
@@ -708,7 +748,7 @@ tbody tr:hover td { background: var(--surface-2); }
   }
   // ---------- POS (sales from the shop's POS app) ----------
   // POS rows are turned into the same shape as PanCafe's cash rows, so every chart and total includes them.
-  const keepRow = (r) => !(posReady && r.kind === 2) && !isExcl(r); // PanCafe's own food sales are replaced by the POS
+  const keepRow = (r) => !(posReady && r.kind === 2) && !isExcl(r) && counted(r); // PanCafe's own food sales are replaced by the POS
 
   // ---------- excluded rows ----------
   // Rows the owner leaves out of every total (pancafe_excluded). PanCafe's own records are not touched.
@@ -763,7 +803,7 @@ tbody tr:hover td { background: var(--surface-2); }
       loadPos(since, new Date(nowMs() + 86400000).toISOString()),
       loadNetHub(since, new Date(nowMs() + 86400000).toISOString()),
     ]);
-    dayRows = dayRows.filter(keepRow).concat(pos.rows.filter((r) => !isExcl(r)), nh.filter((r) => !isExcl(r)));
+    dayRows = dayRows.filter(keepRow).concat(pos.rows, nh).filter((r) => !isExcl(r) && counted(r));
     try { nhStatus = nhReady ? (await q("pancafe_nethub_status", all))[0] || null : null; } catch (err) { nhStatus = null; }
 
     const a = await q("pancafe_agent_status", all); agent = a[0] || null;
@@ -855,6 +895,32 @@ tbody tr:hover td { background: var(--surface-2); }
     $("kpis").innerHTML = cards.map((c) => `<div class="card kpi ${c.hero ? "hero" : ""}">
       <div class="lbl">${c.dot ? `<i style="background:var(${c.dot})"></i>` : ""}${c.lbl}</div>
       <div class="val">${c.val}</div>${c.split || ""}${c.d}<div class="spark">${sparkSvg(c.spark, c.color)}</div></div>`).join("");
+  }
+
+  const dayOf = (iso) => iso ? dayKey(iso) : dayKey(nowMs());
+  const dayStart = (k) => { const [y, m, d] = k.split("-").map(Number); return atLocal(y, m - 1, d).toISOString(); };
+  const longDay = (k) => fmtDay(k, { weekday: "short", month: "short", day: "numeric", year: "numeric" });
+  function renderDataSource() {
+    $("dsCard").hidden = !nhReady && !dsReady;
+    if ($("dsCard").hidden) return;
+    const editing = dsReady && !dsSet.locked;
+    if (editing && !dsDraft) dsDraft = { pc_source: dsSet.pc_source, day: dayOf(dsSet.pc_source === "nethub" ? dsSet.pc_source_from : null) };
+    const cur = editing ? dsDraft : { pc_source: dsSet.pc_source, day: dayOf(dsSet.pc_source_from) };
+    $("dsSeg").querySelectorAll("button").forEach((b) => { b.setAttribute("aria-pressed", String(b.dataset.ds === cur.pc_source)); b.disabled = !editing; });
+    $("dsFrom").value = cur.day; $("dsFrom").disabled = !editing;
+    $("dsFromBox").hidden = cur.pc_source !== "nethub";
+    $("dsLock").hidden = !dsReady;
+    $("dsLock").textContent = editing ? "Save and lock" : "🔒 Locked · Unlock";
+    $("dsLock").className = editing ? "btn" : "btn ghost";
+    $("dsBy").textContent = dsReady && dsSet.updated_by ? `last changed by ${dsSet.updated_by}, ${fmtDay(dayKey(dsSet.updated_at))} ${hhmm(dsSet.updated_at)}` : "";
+    const sum = (nh) => ignored.filter((r) => nh === String(r.kind).startsWith("nh_")).reduce((a, r) => a + +r.amount, 0);
+    const off = [["PanCafe", sum(false)], ["Net Hub", sum(true)]].filter((x) => x[1]).map(([l, v]) => `${l} ${money(v)}`).join(" and ");
+    const rule = dsSet.pc_source === "nethub" && dsSet.pc_source_from
+      ? `Counting Net Hub from ${longDay(dayOf(dsSet.pc_source_from))}, 7 AM. PanCafe before that.`
+      : "Counting PanCafe.";
+    $("dsNote").textContent = !dsReady ? "To choose and lock the source, run supabase/sources.sql once in Supabase. Until then PanCafe is counted."
+      : editing ? "Unlocked: pick the source and start day, then Save and lock. Totals change only after saving."
+      : rule + (off ? ` Not counted in this period: ${off} of PC time and top-ups from the other source.` : "");
   }
 
   function renderSources() {
@@ -1157,7 +1223,7 @@ tbody tr:hover td { background: var(--surface-2); }
     $("customBox").hidden = range !== "custom" || view === "members" || view === "health";
     $("srcSeg").hidden = !nhReady || view === "members" || view === "health" || view === "products";
     $("srcSeg").querySelectorAll("button").forEach((x) => { x.setAttribute("aria-pressed", String(x.dataset.s === srcSel)); x.hidden = x.dataset.s === "pos" && !posReady; });
-    if (view === "overview") { renderSources(); renderKpis(); renderOcc(); renderHourly(); renderDaily(); renderMix(); renderHeat(); renderFeed(); }
+    if (view === "overview") { renderDataSource(); renderSources(); renderKpis(); renderOcc(); renderHourly(); renderDaily(); renderMix(); renderHeat(); renderFeed(); }
     if (view === "pcs") { renderFloor(); renderPcCharts(); }
     if (view === "sales") renderSales();
     if (shown === "products") renderProducts();
@@ -1198,6 +1264,7 @@ tbody tr:hover td { background: var(--surface-2); }
       .on("postgres_changes", { event: "*", schema: "public", table: "pancafe_pos_sales" }, () => {
         clearTimeout(posTimer); posTimer = setTimeout(() => refresh(false), 3000); // items arrive right after the sale
       })
+      .on("postgres_changes", { event: "*", schema: "public", table: "pancafe_settings" }, () => refresh(true))
       .on("postgres_changes", { event: "*", schema: "public", table: "pancafe_nethub_tx" }, () => {
         clearTimeout(nhTimer); nhTimer = setTimeout(() => refresh(true), 3000); // a few rows usually arrive together
       })
@@ -1247,7 +1314,7 @@ tbody tr:hover td { background: var(--surface-2); }
   });
 
   async function refresh(full) {
-    try { await loadExcluded(); if (full) await loadStatic(); await loadPeriod(); renderView(); }
+    try { await Promise.all([loadExcluded(), loadSettings()]); if (full) await loadStatic(); await loadPeriod(); renderView(); }
     catch (err) { $("syncPill").className = "pill bad"; $("syncPill").innerHTML = "<i></i>Can't load data: " + esc(err.message || err); }
   }
   if (window.PCHealth) window.PCHealth.init({ sb, demo, q, esc, css, chart, baseOpts, local, hhmm, fmtDay, nowMs, terminals: () => terminals });
@@ -1265,6 +1332,34 @@ tbody tr:hover td { background: var(--surface-2); }
     view = b.dataset.v; document.querySelectorAll("#nav button").forEach((x) => x === b ? x.setAttribute("aria-current", "page") : x.removeAttribute("aria-current"));
     try { localStorage.setItem("pcl-view", view); } catch (err) {}
     renderView(); window.scrollTo({ top: 0 }); });
+  $("dsSeg").addEventListener("click", (e) => {
+    const b = e.target.closest("button"); if (!b || b.disabled || !dsDraft) return;
+    dsDraft.pc_source = b.dataset.ds; renderDataSource();
+  });
+  $("dsFrom").addEventListener("change", () => { if (dsDraft) { dsDraft.day = $("dsFrom").value || dayOf(null); renderDataSource(); } });
+  $("dsLock").addEventListener("click", async () => {
+    if (!sb || !dsReady) return;
+    const btn = $("dsLock");
+    if (dsSet.locked) {
+      if (await askBox({ title: "Unlock the data source?", text: "Anyone signed in can then change where PC time and member top-ups are counted from, until it is locked again.", ok: "Unlock" }) === null) return;
+      btn.disabled = true;
+      const { error } = await sb.from("pancafe_settings").update({ locked: false }).eq("id", 1);
+      btn.disabled = false;
+      if (error) { await askBox({ title: "Couldn't unlock it", text: error.message, ok: "OK", cancel: false }); return; }
+    } else {
+      const d = dsDraft || { pc_source: dsSet.pc_source, day: dayOf(dsSet.pc_source_from) };
+      const text = d.pc_source === "nethub"
+        ? `From ${longDay(d.day)} at 7 AM, PC time and member top-ups come from Net Hub only. Before that, PanCafe's numbers stay. Food & drinks don't change.`
+        : "PC time and member top-ups come from PanCafe only. Net Hub's are shown as not counted. Food & drinks don't change.";
+      if (await askBox({ title: `Count ${d.pc_source === "nethub" ? "Net Hub" : "PanCafe"} and lock?`, text, ok: "Save and lock" }) === null) return;
+      btn.disabled = true;
+      const { error } = await sb.from("pancafe_settings").update({ pc_source: d.pc_source, pc_source_from: d.pc_source === "nethub" ? dayStart(d.day) : null, locked: true }).eq("id", 1);
+      btn.disabled = false;
+      if (error) { await askBox({ title: "Couldn't save it", text: error.message, ok: "OK", cancel: false }); return; }
+      dsDraft = null;
+    }
+    refresh(true);
+  });
   $("srcSeg").addEventListener("click", (e) => {
     const b = e.target.closest("button"); if (!b) return;
     srcSel = b.dataset.s;
