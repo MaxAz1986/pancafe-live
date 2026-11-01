@@ -78,3 +78,96 @@ exception when duplicate_object then null; end $$;
 
 -- Make the new tables and function visible to the API right away.
 notify pgrst, 'reload schema';
+
+-- ---------------------------------------------------------------------------
+-- Net Hub PCs (added 2026-11-01): live PC status and finished sessions, so the
+-- PCs page can follow Net Hub when it is the chosen source for PC time.
+-- No member names: only whether a session belongs to a member.
+
+create table if not exists public.pancafe_nethub_stations (
+  id bigint primary key,           -- Net Hub stations.id
+  name text not null,
+  last_seen timestamptz,           -- last message from the PC's Net Hub client
+  online boolean,                  -- heard from in the last 2 minutes
+  session_id bigint,               -- open session, if any
+  kind text,                       -- prepaid / postpaid / opentime / member / maintenance
+  is_member boolean,
+  started_at timestamptz,
+  minutes_purchased int,           -- prepaid only
+  paused boolean,
+  paused_ms bigint,
+  rate numeric(12,2),              -- per hour
+  updated_at timestamptz default now()
+);
+
+create table if not exists public.pancafe_nethub_sessions (
+  id bigint primary key,           -- Net Hub sessions.id
+  station text,
+  kind text,
+  is_member boolean,
+  started_at timestamptz not null,
+  ended_at timestamptz not null,
+  paused_min int,
+  using_min int,
+  time_cost numeric(12,2),
+  ended_reason text
+);
+create index if not exists pancafe_nethub_sessions_end on public.pancafe_nethub_sessions (ended_at);
+
+do $$
+declare t text;
+begin
+  foreach t in array array['pancafe_nethub_stations','pancafe_nethub_sessions'] loop
+    execute format('alter table public.%I enable row level security', t);
+    execute format('drop policy if exists viewer_read on public.%I', t);
+    execute format('create policy viewer_read on public.%I for select to authenticated using ((select public.pancafe_is_viewer()))', t);
+    execute format('revoke all on public.%I from anon', t);
+    execute format('grant select on public.%I to authenticated', t);
+  end loop;
+end $$;
+
+-- Extra payload keys:
+--   stations: [{id, name, last_seen, online, session_id, kind, is_member, started_at, minutes_purchased, paused, paused_ms, rate}]
+--             the full list; PCs no longer in Net Hub are removed here
+--   sessions: [{id, station, kind, is_member, started_at, ended_at, paused_min, using_min, time_cost, ended_reason}]
+create or replace function public.pancafe_ingest_nethub_pcs(p_token text, p_payload jsonb)
+returns jsonb language plpgsql security definer set search_path = '' as $$
+begin
+  if not exists (select 1 from public.pancafe_agent_tokens
+                 where token_hash = encode(extensions.digest(p_token, 'sha256'), 'hex')) then
+    raise exception 'invalid agent token' using errcode = '28000';
+  end if;
+
+  if p_payload ? 'stations' then
+    insert into public.pancafe_nethub_stations (id, name, last_seen, online, session_id, kind, is_member, started_at, minutes_purchased, paused, paused_ms, rate, updated_at)
+      select id, name, last_seen, online, session_id, kind, is_member, started_at, minutes_purchased, paused, paused_ms, rate, now()
+        from jsonb_populate_recordset(null::public.pancafe_nethub_stations, p_payload->'stations')
+    on conflict (id) do update set name=excluded.name, last_seen=excluded.last_seen, online=excluded.online, session_id=excluded.session_id,
+      kind=excluded.kind, is_member=excluded.is_member, started_at=excluded.started_at, minutes_purchased=excluded.minutes_purchased,
+      paused=excluded.paused, paused_ms=excluded.paused_ms, rate=excluded.rate, updated_at=now()
+    where (public.pancafe_nethub_stations.name, public.pancafe_nethub_stations.online, public.pancafe_nethub_stations.session_id,
+           public.pancafe_nethub_stations.paused, public.pancafe_nethub_stations.minutes_purchased)
+      is distinct from (excluded.name, excluded.online, excluded.session_id, excluded.paused, excluded.minutes_purchased);
+    delete from public.pancafe_nethub_stations
+     where id not in (select (x->>'id')::bigint from jsonb_array_elements(p_payload->'stations') x);
+  end if;
+
+  if p_payload ? 'sessions' then
+    insert into public.pancafe_nethub_sessions
+      select * from jsonb_populate_recordset(null::public.pancafe_nethub_sessions, p_payload->'sessions')
+    on conflict (id) do update set station=excluded.station, kind=excluded.kind, is_member=excluded.is_member,
+      started_at=excluded.started_at, ended_at=excluded.ended_at, paused_min=excluded.paused_min,
+      using_min=excluded.using_min, time_cost=excluded.time_cost, ended_reason=excluded.ended_reason;
+  end if;
+
+  return jsonb_build_object('ok', true);
+end $$;
+revoke all on function public.pancafe_ingest_nethub_pcs(text, jsonb) from public, authenticated;
+grant execute on function public.pancafe_ingest_nethub_pcs(text, jsonb) to anon;
+
+do $$ begin
+  alter publication supabase_realtime add table public.pancafe_nethub_stations;
+exception when duplicate_object then null; end $$;
+
+-- Make the new tables and functions visible to the API right away.
+notify pgrst, 'reload schema';

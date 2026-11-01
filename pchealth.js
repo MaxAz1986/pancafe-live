@@ -297,7 +297,7 @@ window.PCHealth = (() => {
         X.q("pchealth_pcs", (q) => q.select("*")),
         X.q("pchealth_events", (q) => q.select("pc,log,record_id,at,provider,event_id,kind,message,data").gte("at", since).order("at")),
         X.q("pchealth_lastmoments", (q) => q.select("*").gte("ended_at", since).order("ended_at")),
-        X.q("pancafe_sessions", (q) => q.select("id,terminal_name,start_at,end_at").gte("end_at", since).order("id")).catch(() => []),
+        X.sessionsSince ? X.sessionsSince(since) : X.q("pancafe_sessions", (q) => q.select("id,terminal_name,start_at,end_at").gte("end_at", since).order("id")).catch(() => []),
         X.q("pancafe_pc_log", (q) => q.select("pc,at,event").gte("at", since).order("at")).catch(() => []),
       ]);
     }
@@ -332,7 +332,7 @@ window.PCHealth = (() => {
   function draw() {
     const root = document.getElementById("healthRoot");
     const incidents = buildIncidents();
-    const terms = (X.terminals() || []).map((x) => x.name);
+    const terms = (X.terminals() || []).map((x) => pcName(x.name));
     const names = [...new Set([...terms, ...pcs.map((p) => p.pc)])].sort(nameSort);
     const byPc = Object.fromEntries(pcs.map((p) => [p.pc, p]));
     const rows = names.map((n) => {
