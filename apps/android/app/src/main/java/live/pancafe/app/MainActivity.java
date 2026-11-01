@@ -6,6 +6,7 @@ import android.graphics.Color;
 import android.net.Uri;
 import android.os.Bundle;
 import android.webkit.JavascriptInterface;
+import android.webkit.WebChromeClient;
 import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
@@ -31,8 +32,11 @@ public class MainActivity extends Activity {
         s.setDomStorageEnabled(true);   // keeps you signed in
         s.setDatabaseEnabled(true);
         s.setCacheMode(WebSettings.LOAD_DEFAULT);
-        s.setUserAgentString(s.getUserAgentString() + " PancafeLiveAndroid/1.0");
+        s.setUserAgentString(s.getUserAgentString() + " PancafeLiveAndroid/1.1");
         web.addJavascriptInterface(new Bridge(), "Android");
+
+        // Without this, Android silently drops the page's alert/confirm/prompt boxes.
+        web.setWebChromeClient(new WebChromeClient());
 
         web.setWebViewClient(new WebViewClient() {
             @Override
