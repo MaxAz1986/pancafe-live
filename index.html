@@ -227,6 +227,7 @@ button, select, input { font: inherit; color: inherit; }
 .pc .bar { height: 4px; border-radius: 2px; background: var(--line); overflow: hidden; margin-top: 4px; }
 .pc .bar b { display: block; height: 100%; background: var(--accent); border-radius: 2px; }
 .pc.on { background: var(--surface); border-color: var(--accent); }
+.pc.off { opacity: .5; }
 .pc.on .chip { background: var(--accent-soft); color: var(--accent); }
 .pc.low { border-color: var(--warn); }
 .pc.low .chip { background: var(--warn-bg); color: var(--warn); }
@@ -701,7 +702,7 @@ tbody tr:hover td { background: var(--surface-2); }
   const inWin = (t, a, b) => { const x = new Date(t).getTime(); return x >= a.getTime() && x < b.getTime(); };
 
   // ---------- state ----------
-  let cash = [], prevCash = [], sessions = [], moves = [], terminals = [], members = [], products = [], dayRows = [], posItems = [], posAllItems = [], posSales = [], posReady = false, agent = null, exclRows = [], cashAll = [], nhReady = false, nhStatus = null;
+  let cash = [], prevCash = [], sessions = [], moves = [], terminals = [], members = [], products = [], dayRows = [], posItems = [], posAllItems = [], posSales = [], posReady = false, agent = null, exclRows = [], cashAll = [], nhReady = false, nhStatus = null, pcTerms = [], nhStations = [], nhPcReady = false, hlPcs = [];
 
   // ---------- data source for PC time and member top-ups (pancafe_settings) ----------
   // Only one source counts at a time, so the same money is never added twice. Before the chosen
@@ -722,6 +723,38 @@ tbody tr:hover td { background: var(--surface-2); }
     return nh ? after : !after;
   }
 
+  // ---------- PCs from Net Hub (+ PC health for on/off) ----------
+  // When Net Hub is the chosen source for PC time, the PCs page, "PCs right now" and PC health follow
+  // Net Hub's PCs and sessions from the start day on. PanCafe's own PC data is kept and used before it.
+  const pcName = (n) => { n = String(n || "").trim().toUpperCase(); const m = n.match(/^PC[-_ ]?0*(\d{1,3})$/); return m ? "PC" + m[1].padStart(2, "0") : n; };
+  const nhFrom = () => nhPcReady && dsSet.pc_source === "nethub" && dsSet.pc_source_from ? new Date(dsSet.pc_source_from).getTime() : null;
+  const pcNH = () => { const f = nhFrom(); return f != null && f <= nowMs(); };
+  const NH_KIND = { prepaid: "Prepaid", postpaid: "Postpaid", opentime: "Open time", member: "Member", maintenance: "Maintenance" };
+  const recent = (iso) => iso && nowMs() - new Date(iso).getTime() < 2 * 60000;
+  function nhTerm(x) {
+    const hl = hlPcs.find((h) => pcName(h.pc) === pcName(x.name));
+    const online = !!(x.online || (hl && recent(hl.last_seen)));
+    return { id: "n" + x.id, name: pcName(x.name), online, label: NH_KIND[x.kind], member: x.is_member, paused: !!x.paused,
+      status: x.session_id ? (x.kind === "prepaid" ? 4 : x.kind === "maintenance" ? 5 : 3) : 1,
+      start_at: x.started_at ? new Date(new Date(x.started_at).getTime() + (+x.paused_ms || 0)).toISOString() : null,
+      timer_minute: x.kind === "prepaid" ? +x.minutes_purchased || 0 : 0, order_amount: 0, prepaid_amount: 0, open_admin: "" };
+  }
+  function applyTerms() { terminals = pcNH() ? nhStations.map(nhTerm) : pcTerms; }
+  async function loadNhPcs() {
+    try { nhStations = await q("pancafe_nethub_stations", (t) => t.select("*")); nhPcReady = true; }
+    catch (err) { nhStations = []; nhPcReady = false; } // table not set up yet
+    hlPcs = nhPcReady ? await q("pchealth_pcs", (t) => t.select("pc,last_seen")).catch(() => []) : [];
+    applyTerms();
+  }
+  const nhSess = (x) => ({ id: "n" + x.id, terminal_name: pcName(x.station), using_min: +x.using_min || 0, paused_min: +x.paused_min || 0,
+    total_price: +x.time_cost || 0, start_at: x.started_at, end_at: x.ended_at, nh: true });
+  // PanCafe's sessions before the start day, Net Hub's from it on, so none is counted twice.
+  async function mixSessions(pc, a, b) {
+    const f = nhFrom(); if (f == null) return pc;
+    const nh = f < new Date(b).getTime() ? await q("pancafe_nethub_sessions", (t) => t.select("*").gte("ended_at", new Date(Math.max(f, new Date(a).getTime())).toISOString()).lt("ended_at", b).order("id")).catch(() => []) : [];
+    return pc.filter((x) => new Date(x.end_at).getTime() < f).concat(nh.map(nhSess));
+  }
+
   async function loadPeriod() {
     const p = period();
     const s = p.start.toISOString(), e = p.end.toISOString(), ps = p.prevStart.toISOString();
@@ -734,6 +767,7 @@ tbody tr:hover td { background: var(--surface-2); }
       q("pancafe_stock_moves", win("at", s, e), dwin("at", s, e)),
     ]);
     const [pos, nh] = await Promise.all([loadPos(ps, e), loadNetHub(ps, e)]);
+    sessions = await mixSessions(sessions, s, e);
     posSales = pos.sales.filter((r) => inWin(r.at, p.start, p.end));
     posItems = pos.items.filter((r) => inWin(r.at, p.start, p.end));
     posAllItems = pos.allItems.filter((r) => inWin(r.at, p.start, p.end));
@@ -796,7 +830,7 @@ tbody tr:hover td { background: var(--surface-2); }
     const since = new Date(nowMs() - 32 * 86400000).toISOString();
     const all = (t) => t.select("*");
     let pos, nh;
-    [terminals, members, products, dayRows, pos, nh] = await Promise.all([
+    [pcTerms, members, products, dayRows, pos, nh] = await Promise.all([
       q("pancafe_terminals", all), q("pancafe_members", all), q("pancafe_products", all),
       q("pancafe_cash", (t) => t.select("id,at,amount,kind,is_expense").gte("at", since).order("id"),
         (r) => r.filter((x) => new Date(x.at) >= new Date(since))),
@@ -805,6 +839,7 @@ tbody tr:hover td { background: var(--surface-2); }
     ]);
     dayRows = dayRows.filter(keepRow).concat(pos.rows, nh).filter((r) => !isExcl(r) && counted(r));
     try { nhStatus = nhReady ? (await q("pancafe_nethub_status", all))[0] || null : null; } catch (err) { nhStatus = null; }
+    await loadNhPcs();
 
     const a = await q("pancafe_agent_status", all); agent = a[0] || null;
   }
@@ -889,7 +924,7 @@ tbody tr:hover td { background: var(--surface-2); }
       { lbl: "PC time", dot: "--s1", val: money(o.pc), split: split("pc"), d: delta(o.pc, po.pc, p.prevLabel), spark: sp(isCat("pc")), color: css("--s1") },
       { lbl: "Food & drinks", dot: "--s2", val: money(o.food), d: delta(o.food, po.food, p.prevLabel), spark: sp(isCat("food")), color: css("--s2") },
       { lbl: "Member top-ups", dot: "--s3", val: money(o.topup), split: split("topup"), d: delta(o.topup, po.topup, p.prevLabel), spark: sp(isCat("topup")), color: css("--s3") },
-      { lbl: nhReady ? "PanCafe sessions closed" : "Sessions closed", val: sessions.length.toLocaleString(), d: `<span class="delta flat"><small>${money(o.expense)} expenses · ${money(o.ticket + o.other)} other</small></span>`, spark: buckets(sessions, "end_at", () => 1), color: css("--ink-3") },
+      { lbl: nhReady && nhFrom() == null ? "PanCafe sessions closed" : "Sessions closed", val: sessions.length.toLocaleString(), d: `<span class="delta flat"><small>${money(o.expense)} expenses · ${money(o.ticket + o.other)} other</small></span>`, spark: buckets(sessions, "end_at", () => 1), color: css("--ink-3") },
     ];
     $("kpis").style.setProperty("--kpi-n", cards.length);
     $("kpis").innerHTML = cards.map((c) => `<div class="card kpi ${c.hero ? "hero" : ""}">
@@ -1049,9 +1084,10 @@ tbody tr:hover td { background: var(--surface-2); }
   function renderFloor() {
     const list = [...terminals].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
     $("floor").innerHTML = list.map((t) => {
-      if (!inUse(t)) return `<div class="pc free"><div class="nm">${esc(t.name)}<span class="chip">Free</span></div><div class="tm">Available</div></div>`;
+      if (!inUse(t)) return t.online === false ? `<div class="pc free off"><div class="nm">${esc(t.name)}<span class="chip">Off</span></div><div class="tm">Turned off</div></div>`
+        : `<div class="pc free"><div class="nm">${esc(t.name)}<span class="chip">Free</span></div><div class="tm">Available</div></div>`;
       const m = minsSince(t), timed = t.timer_minute > 0, left = timed ? minsLeft(t) : null, low = timed && left <= 10;
-      const label = t.paused ? "Paused" : (STATUS[t.status] || "In use");
+      const label = t.paused ? "Paused" : (t.label || STATUS[t.status] || "In use");
       const time = timed ? `${Math.max(left, 0)} min left` : `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, "0")}m`;
       const extra = [t.prepaid_amount > 0 ? money(t.prepaid_amount) + " paid" : "", t.order_amount > 0 ? money(t.order_amount) + " food" : "", t.open_admin || ""].filter(Boolean).join(" · ");
       const pct = timed ? Math.min(100, m / t.timer_minute * 100) : 0;
@@ -1059,11 +1095,12 @@ tbody tr:hover td { background: var(--surface-2); }
         <div class="tm">${time}</div><div class="ex">since ${hhmm(t.start_at)}${extra ? " · " + esc(extra) : ""}</div>${timed ? `<div class="bar"><b style="width:${pct}%"></b></div>` : ""}</div>`;
     }).join("") || '<div class="empty">No PCs synced yet.</div>';
     const used = list.filter(inUse).length;
-    $("floorSummary").textContent = `${used} of ${list.length} in use · updates live`;
+    const off = list.filter((t) => !inUse(t) && t.online === false).length;
+    $("floorSummary").textContent = `${used} of ${list.length} in use${off ? ` · ${off} off` : ""}${pcNH() ? " · from Net Hub" : ""} · updates live`;
   }
   function pcStats() {
     const by = {};
-    for (const s of sessions) { const o = (by[s.terminal_name] ||= { n: 0, min: 0, total: 0 }); o.n++; o.min += s.using_min; o.total += +s.total_price; }
+    for (const s of sessions) { const o = (by[pcName(s.terminal_name)] ||= { n: 0, min: 0, total: 0 }); o.n++; o.min += s.using_min; o.total += +s.total_price; }
     return Object.entries(by).sort((a, b) => a[0].localeCompare(b[0], undefined, { numeric: true }));
   }
   function renderPcCharts() {
@@ -1242,14 +1279,18 @@ tbody tr:hover td { background: var(--surface-2); }
   }
 
   // ---------- realtime ----------
-  let posTimer = 0, nhTimer = 0;
+  let posTimer = 0, nhTimer = 0, nhPcTimer = 0;
   function subscribe() {
     if (demo) return;
     sb.channel("pancafe")
       .on("postgres_changes", { event: "*", schema: "public", table: "pancafe_terminals" }, (e) => {
-        if (e.eventType === "DELETE") terminals = terminals.filter((t) => t.id !== e.old.id);
-        else { const i = terminals.findIndex((t) => t.id === e.new.id); if (i >= 0) terminals[i] = e.new; else terminals.push(e.new); }
-        if (view === "pcs") renderFloor(); if (view === "overview") renderOcc();
+        if (e.eventType === "DELETE") pcTerms = pcTerms.filter((t) => t.id !== e.old.id);
+        else { const i = pcTerms.findIndex((t) => t.id === e.new.id); if (i >= 0) pcTerms[i] = e.new; else pcTerms.push(e.new); }
+        if (pcNH()) return;
+        applyTerms(); if (view === "pcs") renderFloor(); if (view === "overview") renderOcc();
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "pancafe_nethub_stations" }, () => {
+        clearTimeout(nhPcTimer); nhPcTimer = setTimeout(async () => { await loadNhPcs(); if (view === "pcs") renderFloor(); if (view === "overview") renderOcc(); }, 1500);
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "pancafe_cash" }, (e) => {
         if (e.eventType === "DELETE" || !keepRow(e.new)) return;
@@ -1270,6 +1311,7 @@ tbody tr:hover td { background: var(--surface-2); }
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "pancafe_sessions" }, (e) => {
         if (e.eventType === "DELETE" || !inWin(e.new.end_at, period().start, period().end)) return;
+        if (nhFrom() != null && new Date(e.new.end_at).getTime() >= nhFrom()) return;   // Net Hub counts from the start day
         const i = sessions.findIndex((r) => r.id === e.new.id); if (i >= 0) sessions[i] = e.new; else sessions.push(e.new);
         if (view === "overview") renderKpis(); if (view === "pcs") renderPcCharts();
       })
@@ -1317,7 +1359,8 @@ tbody tr:hover td { background: var(--surface-2); }
     try { await Promise.all([loadExcluded(), loadSettings()]); if (full) await loadStatic(); await loadPeriod(); renderView(); }
     catch (err) { $("syncPill").className = "pill bad"; $("syncPill").innerHTML = "<i></i>Can't load data: " + esc(err.message || err); }
   }
-  if (window.PCHealth) window.PCHealth.init({ sb, demo, q, esc, css, chart, baseOpts, local, hhmm, fmtDay, nowMs, terminals: () => terminals });
+  if (window.PCHealth) window.PCHealth.init({ sb, demo, q, esc, css, chart, baseOpts, local, hhmm, fmtDay, nowMs, terminals: () => terminals,
+    sessionsSince: async (since) => mixSessions(await q("pancafe_sessions", (t) => t.select("id,terminal_name,start_at,end_at").gte("end_at", since).order("id")).catch(() => []), since, new Date(nowMs() + 86400000).toISOString()) });
   async function start(session) {
     $("login").hidden = true; $("app").hidden = false;
     $("who").textContent = session?.user?.email || (demo ? "Preview" : "");
