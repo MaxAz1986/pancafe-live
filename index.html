@@ -264,6 +264,15 @@ tbody tr:hover td { background: var(--surface-2); }
 .xbtn { margin-left: 6px; padding: 1px 7px; font-size: 10.5px; font-weight: 600; border-radius: 999px; border: 1px solid var(--line); background: var(--surface-2); color: var(--ink-3); cursor: pointer; opacity: .55; }
 .xbtn:hover, .xbtn:focus-visible { opacity: 1; color: var(--ink); }
 .feed tr.excl .xbtn { opacity: 1; }
+.askbox { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; padding: 16px; background: rgba(0,0,0,.55); }
+.askbox form { width: min(420px, 100%); padding: 18px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface-2); color: var(--ink); }
+.askbox h3 { margin: 0 0 6px; font-size: 16px; }
+.askbox p { margin: 0 0 12px; font-size: 13px; color: var(--ink-3); }
+.askbox label { display: block; font-size: 12px; color: var(--ink-3); }
+.askbox input { box-sizing: border-box; width: 100%; margin-top: 4px; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line); background: transparent; color: var(--ink); font: inherit; }
+.askbox .btns { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+.askbox button { padding: 7px 14px; border-radius: 999px; border: 1px solid var(--line); background: transparent; color: var(--ink); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+.askbox button[type=submit] { border-color: var(--ink); }
 .new td { animation: flash 2.5s ease-out; }
 @keyframes flash { from { background: var(--accent-soft); } to { background: transparent; } }
 @media (prefers-reduced-motion: reduce) { .new td, .pill.good i { animation: none; } }
@@ -1202,21 +1211,37 @@ tbody tr:hover td { background: var(--surface-2); }
       .subscribe();
   }
 
+  // A dialog drawn in the page: the desktop and Android apps don't support the browser's prompt().
+  function askBox({ title, text, input, ok, cancel = true }) {
+    return new Promise((done) => {
+      const w = document.createElement("div");
+      w.className = "askbox";
+      w.innerHTML = `<form role="dialog" aria-modal="true"><h3>${esc(title)}</h3><p>${esc(text)}</p>${input ? `<label>${esc(input)}<input type="text" maxlength="200" autocomplete="off"></label>` : ""}<div class="btns">${cancel ? `<button type="button" data-no>Cancel</button>` : ""}<button type="submit">${esc(ok)}</button></div></form>`;
+      const box = w.querySelector("input");
+      const close = (v) => { w.remove(); done(v); };
+      if (cancel) w.querySelector("[data-no]").onclick = () => close(null);
+      w.addEventListener("keydown", (e) => { if (e.key === "Escape") close(null); });
+      w.querySelector("form").onsubmit = (e) => { e.preventDefault(); close(box ? box.value : ""); };
+      document.body.append(w);
+      (box || w.querySelector("[type=submit]")).focus();
+    });
+  }
+
   // ---------- boot ----------
   $("feed").addEventListener("click", async (e) => {
     const b = e.target.closest("button[data-x]"); if (!b || !sb) return;
     const id = b.dataset.x;
     if (b.dataset.on === "1") {
-      if (!confirm("Count this transaction in the totals again?")) return;
+      if (await askBox({ title: "Include this transaction again?", text: "It will count in the totals again.", ok: "Include again" }) === null) return;
       b.disabled = true;
       const { error } = await sb.from("pancafe_excluded").delete().eq("row_id", id);
-      if (error) { alert("Couldn't include it again: " + error.message); b.disabled = false; return; }
+      if (error) { await askBox({ title: "Couldn't include it again", text: error.message, ok: "OK", cancel: false }); b.disabled = false; return; }
     } else {
-      const note = prompt("Leave this transaction out of all totals?\nPanCafe's own record stays as it is.\n\nReason (optional):", "");
+      const note = await askBox({ title: "Exclude this transaction?", text: "It will be left out of all totals. PanCafe's own record stays as it is.", input: "Reason (optional)", ok: "Exclude" });
       if (note === null) return;
       b.disabled = true;
       const { error } = await sb.from("pancafe_excluded").insert({ row_id: id, note: note.trim() || null });
-      if (error) { alert("Couldn't exclude it: " + error.message); b.disabled = false; return; }
+      if (error) { await askBox({ title: "Couldn't exclude it", text: error.message, ok: "OK", cancel: false }); b.disabled = false; return; }
     }
     refresh(true);
   });
