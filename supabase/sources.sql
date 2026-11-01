@@ -54,3 +54,6 @@ grant select, update on public.pancafe_settings to authenticated;
 do $$ begin
   alter publication supabase_realtime add table public.pancafe_settings;
 exception when duplicate_object then null; end $$;
+
+-- Make the new tables and function visible to the API right away.
+notify pgrst, 'reload schema';
