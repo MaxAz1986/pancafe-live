@@ -787,7 +787,7 @@ tbody tr:hover td { background: var(--surface-2); }
   // ---------- excluded rows ----------
   // Rows the owner leaves out of every total (pancafe_excluded). PanCafe's own records are not touched.
   let excluded = new Map(), exclReady = false;
-  const isExcl = (r) => excluded.has(String(r.id));
+  const isExcl = (r) => r.free || excluded.has(String(r.id));
   async function loadExcluded() {
     try {
       const rows = await q("pancafe_excluded", (t) => t.select("*"));
@@ -814,10 +814,26 @@ tbody tr:hover td { background: var(--surface-2); }
 
   // ---------- Net Hub (NetCafe Hub: PC time and member top-ups paid there) ----------
   // Same shape as PanCafe's cash rows, with their own kinds so they always stay labelled as Net Hub.
+  // Sessions the owner ended as free in Net Hub: the PC time paid for them is not income,
+  // so it is left out like an excluded row (marked "Ended free").
+  let nhFree = [];
+  async function loadNhFree() {
+    try {
+      const rows = await q("pancafe_nethub_sessions", (t) => t.select("station,started_at,ended_at").eq("ended_reason", "free"),
+        (rs) => rs.filter((r) => r.ended_reason === "free"));
+      nhFree = rows.map((x) => ({ pc: pcName(x.station), a: new Date(x.started_at).getTime() - 2000, b: new Date(x.ended_at).getTime() + 1000 }));
+    } catch (err) { nhFree = []; } // table not set up yet
+  }
+  const endedFree = (t) => {
+    if (t.type !== "time" || !t.station) return false;
+    const pc = pcName(t.station), at = new Date(t.at).getTime();
+    return nhFree.some((x) => x.pc === pc && at >= x.a && at <= x.b);
+  };
   const nhRow = (t) => ({ id: "n" + t.id, at: t.at, kind: t.type === "topup" ? "nh_topup" : "nh_time", is_expense: false, amount: t.amount,
-    admin_name: t.staff || "", note: [t.station, t.note, t.method && t.method !== "cash" ? t.method : ""].filter(Boolean).join(" · "), nh: t });
+    admin_name: t.staff || "", note: [t.station, t.note, t.method && t.method !== "cash" ? t.method : ""].filter(Boolean).join(" · "), nh: t, free: endedFree(t) });
   async function loadNetHub(a, b) {
     try {
+      await loadNhFree();
       const rows = await q("pancafe_nethub_tx", (t) => t.select("*").gte("at", a).lt("at", b).order("id"),
         (rs) => rs.filter((r) => inWin(r.at, new Date(a), new Date(b))));
       nhReady = true;
@@ -1071,8 +1087,8 @@ tbody tr:hover td { background: var(--surface-2); }
       return `<tr class="${r.id === hl ? "new" : ""}${off ? " excl" : ""}"><td class="mono muted" style="width:52px">${hhmm(r.at)}</td>
       <td><span class="tag ${r.is_expense ? "exp" : ""}">${r.is_expense ? "" : `<i style="background:${catColor(k)}"></i>`}${esc(r.is_expense ? (KIND[r.kind] === "Refund" ? "Refund" : r.kind === "posexp" ? "POS expense" : "Expense") : (KIND[r.kind] || "Type " + r.kind))}</span>
         ${nhReady ? `<span class="tag src ${srcOf(r)}">${srcLabel(srcOf(r))}</span>` : ""}
-        ${off ? `<span class="tag off" title="${esc([x.note, x.excluded_by].filter(Boolean).join(" · "))}">Excluded</span>` : ""}
-        ${canX ? `<button type="button" class="xbtn" data-x="${esc(String(r.id))}" data-on="${off ? 1 : 0}">${off ? "Include again" : "Exclude"}</button>` : ""}
+        ${r.free ? `<span class="tag off" title="Ended as free in Net Hub, so it is not counted">Ended free</span>` : off ? `<span class="tag off" title="${esc([x.note, x.excluded_by].filter(Boolean).join(" · "))}">Excluded</span>` : ""}
+        ${canX && !r.free ? `<button type="button" class="xbtn" data-x="${esc(String(r.id))}" data-on="${off ? 1 : 0}">${off ? "Include again" : "Exclude"}</button>` : ""}
         <div class="note">${esc((r.note || "").replace(/^Money deposited to member account\.\s*/, "Top-up "))}${r.admin_name ? " · " + esc(r.admin_name) : ""}</div></td>
       <td class="r num">${r.is_expense || r.amount < 0 ? "−" : ""}${money(Math.abs(r.amount), 2)}</td></tr>`; }).join("")
       || '<tr><td class="empty">No transactions in this period yet.</td></tr>';
@@ -1290,7 +1306,7 @@ tbody tr:hover td { background: var(--surface-2); }
         applyTerms(); if (view === "pcs") renderFloor(); if (view === "overview") renderOcc();
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "pancafe_nethub_stations" }, () => {
-        clearTimeout(nhPcTimer); nhPcTimer = setTimeout(async () => { await loadNhPcs(); if (view === "pcs") renderFloor(); if (view === "overview") renderOcc(); }, 1500);
+        clearTimeout(nhPcTimer); nhPcTimer = setTimeout(async () => { await loadNhPcs(); if (view === "pcs") renderFloor(); if (view === "overview") renderOcc(); refresh(false); }, 4000); // a session may have ended as free
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "pancafe_cash" }, (e) => {
         if (e.eventType === "DELETE" || !keepRow(e.new)) return;
